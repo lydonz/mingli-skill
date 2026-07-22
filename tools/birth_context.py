@@ -7,7 +7,7 @@ used for chart construction.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 import re
 import unicodedata
@@ -15,9 +15,10 @@ from typing import Any, Dict, Iterable, List, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-TIME_NORMALIZATION_VERSION = "true-solar-v2"
+TIME_NORMALIZATION_VERSION = "true-solar-v3"
 GEONAMES_SOURCE = "geonamescache-2.0.0"
 ZI_HOUR_CONVENTIONS = ("benchmark", "early", "late")
+CALENDAR_BACKEND_TIMEZONE = "Asia/Shanghai"
 
 
 class BirthContextError(ValueError):
@@ -61,7 +62,9 @@ class ResolvedPlace:
 class NormalizedBirthContext:
     civil_time: datetime
     effective_time: datetime
+    calendar_time: datetime
     timezone: str
+    calendar_timezone: str
     time_basis: str
     correction_minutes: float
     equation_of_time_minutes: float
@@ -77,7 +80,9 @@ class NormalizedBirthContext:
             "time_basis": self.time_basis,
             "civil_time": self.civil_time.isoformat(timespec="seconds"),
             "effective_time": self.effective_time.isoformat(timespec="seconds"),
+            "calendar_time": self.calendar_time.isoformat(timespec="seconds"),
             "timezone": self.timezone,
+            "calendar_timezone": self.calendar_timezone,
             "correction_minutes": round(self.correction_minutes, 3),
             "equation_of_time_minutes": round(self.equation_of_time_minutes, 3),
             "standard_meridian": self.standard_meridian,
@@ -196,10 +201,20 @@ def resolve_place(place: Dict[str, Any]) -> ResolvedPlace:
                 "经纬度地点必须同时提供 longitude、latitude 和 timezone。",
             )
         try:
+            numeric_longitude = float(longitude)
+            numeric_latitude = float(latitude)
+            if not -180 <= numeric_longitude <= 180:
+                raise BirthContextError(
+                    "invalid_coordinates", "longitude 必须在 -180 至 180 之间。"
+                )
+            if not -90 <= numeric_latitude <= 90:
+                raise BirthContextError(
+                    "invalid_coordinates", "latitude 必须在 -90 至 90 之间。"
+                )
             return ResolvedPlace(
                 name=str(place.get("name") or "provided-coordinates"),
-                latitude=float(latitude),
-                longitude=float(longitude),
+                latitude=numeric_latitude,
+                longitude=numeric_longitude,
                 timezone=str(timezone),
                 country_code=place.get("country_code"),
                 source="caller-provided",
@@ -272,6 +287,32 @@ def _equation_of_time_minutes(value: datetime) -> float:
     )
 
 
+def _attach_validated_timezone(civil_time: datetime, zone: ZoneInfo) -> datetime:
+    """Attach a zone while rejecting impossible or ambiguous wall-clock times."""
+    primary = civil_time.replace(tzinfo=zone, fold=0)
+    round_tripped = primary.astimezone(timezone.utc).astimezone(zone)
+    if round_tripped.replace(tzinfo=None) != civil_time:
+        raise BirthContextError(
+            "nonexistent_local_time",
+            "出生当地时间落在夏令时跳转的不存在区间，请确认原始记录。",
+        )
+    alternate = civil_time.replace(tzinfo=zone, fold=1)
+    if alternate.utcoffset() != primary.utcoffset():
+        raise BirthContextError(
+            "ambiguous_local_time",
+            "出生当地时间在夏令时回拨时段内存在两个可能时刻，请补充偏移量或确认记录。",
+        )
+    return primary
+
+
+def _calendar_backend_time(civil_time: datetime, zone: ZoneInfo) -> datetime:
+    """Convert a local civil instant to lunar-python's calendar timescale."""
+    backend_zone = ZoneInfo(CALENDAR_BACKEND_TIMEZONE)
+    return _attach_validated_timezone(civil_time, zone).astimezone(
+        backend_zone
+    ).replace(tzinfo=None)
+
+
 def normalize_birth_context(
     birth_info: Dict[str, Any],
     birth_context: Optional[Dict[str, Any]] = None,
@@ -295,7 +336,10 @@ def normalize_birth_context(
         raise BirthContextError(
             "invalid_uncertainty", "uncertainty_minutes 必须是非负整数。"
         )
-    zi_hour_convention = context.get("zi_hour_convention", "benchmark")
+    zi_hour_convention = context.get(
+        "zi_hour_convention",
+        birth_info.get("zi_hour_convention", "benchmark"),
+    )
     if zi_hour_convention not in ZI_HOUR_CONVENTIONS:
         raise BirthContextError(
             "invalid_zi_hour_convention",
@@ -306,7 +350,9 @@ def normalize_birth_context(
         return NormalizedBirthContext(
             civil_time=civil_time,
             effective_time=civil_time,
+            calendar_time=civil_time,
             timezone="Asia/Shanghai",
+            calendar_timezone=CALENDAR_BACKEND_TIMEZONE,
             time_basis="standard",
             correction_minutes=0.0,
             equation_of_time_minutes=0.0,
@@ -347,12 +393,15 @@ def normalize_birth_context(
         zone = ZoneInfo(str(timezone_name))
     except ZoneInfoNotFoundError as exc:
         raise BirthContextError("invalid_timezone", f"未知时区：{timezone_name}") from exc
+    calendar_time = _calendar_backend_time(civil_time, zone)
 
     if time_basis == "standard":
         return NormalizedBirthContext(
             civil_time=civil_time,
             effective_time=civil_time,
+            calendar_time=calendar_time,
             timezone=str(timezone_name),
+            calendar_timezone=CALENDAR_BACKEND_TIMEZONE,
             time_basis=time_basis,
             correction_minutes=0.0,
             equation_of_time_minutes=0.0,
@@ -363,7 +412,7 @@ def normalize_birth_context(
             warnings=(),
         )
 
-    offset = civil_time.replace(tzinfo=zone).utcoffset()
+    offset = _attach_validated_timezone(civil_time, zone).utcoffset()
     if offset is None:
         raise BirthContextError("timezone_offset_unavailable", "无法计算出生时刻的时区偏移。")
     standard_meridian = offset.total_seconds() / 3600 * 15
@@ -373,7 +422,9 @@ def normalize_birth_context(
     return NormalizedBirthContext(
         civil_time=civil_time,
         effective_time=effective,
+        calendar_time=calendar_time,
         timezone=str(timezone_name),
+        calendar_timezone=CALENDAR_BACKEND_TIMEZONE,
         time_basis=time_basis,
         correction_minutes=correction,
         equation_of_time_minutes=equation,

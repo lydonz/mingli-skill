@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .toolkit_base import Toolkit
+from .computed_chart import ComputedChart
 
 from .calendar_engine import (
     TIANGAN, DIZHI, TIANGAN_IDX, DIZHI_IDX,
@@ -306,6 +307,11 @@ class ZiweiToolkit(Toolkit):
         is_lunar: bool = False,
         is_leap_month: bool = False,
         zi_hour_convention: str = "benchmark",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: dict | None = None,
+        year_boundary: str = "lichun",
+        computed_chart: ComputedChart | None = None,
     ) -> str:
         """
         排紫微斗数命盘：根据公历出生时间排出完整的紫微斗数命盘，包含十二宫主星和辅星。
@@ -336,6 +342,33 @@ class ZiweiToolkit(Toolkit):
                     solar.getYear(), solar.getMonth(), solar.getDay()
                 )
 
+            if computed_chart is None:
+                from engine.run_tools_engine import compute_chart
+
+                birth_info = {
+                    "year": solar_year,
+                    "month": solar_month,
+                    "day": solar_day,
+                    "hour": hour,
+                    "minute": minute,
+                    "second": second,
+                    "gender": gender,
+                    "year_boundary": year_boundary,
+                    "zi_hour_convention": zi_hour_convention,
+                }
+                if birth_context is not None:
+                    birth_info["birth_context"] = birth_context
+                computed_chart = compute_chart(birth_info)
+
+            solar_year = computed_chart["birth_year"]
+            solar_month = computed_chart["birth_month"]
+            solar_day = computed_chart["birth_day"]
+            hour = computed_chart["birth_hour"]
+            gender = computed_chart["gender"]
+            zi_hour_convention = computed_chart["birth_time"][
+                "zi_hour_convention"
+            ]
+
             exact_chart, backend_status = _paipan_with_iztro(
                 solar_year,
                 solar_month,
@@ -345,29 +378,26 @@ class ZiweiToolkit(Toolkit):
                 zi_hour_convention,
             )
             if exact_chart is not None:
+                result = _format_iztro_chart(
+                    exact_chart,
+                    solar_year,
+                    solar_month,
+                    solar_day,
+                    hour,
+                    zi_hour_convention,
+                    backend_status,
+                )
+                result["chart_id"] = computed_chart.get("chart_id")
+                result["birth_time"] = computed_chart.get("birth_time")
                 return json.dumps(
-                    _format_iztro_chart(
-                        exact_chart,
-                        solar_year,
-                        solar_month,
-                        solar_day,
-                        hour,
-                        zi_hour_convention,
-                        backend_status,
-                    ),
+                    result,
                     ensure_ascii=False,
                 )
 
             hour_zhi_idx = self._hour_to_zhi(hour)
-            if is_lunar:
-                lunar_month, lunar_day = month, day
-                year_gz = year_ganzhi(
-                    solar_year, solar_month, solar_day, hour
-                )
-            else:
-                lunar = solar_to_lunar(year, month, day, hour)
-                lunar_month, lunar_day = lunar["month"], lunar["day"]
-                year_gz = lunar["year_ganzhi"]
+            lunar = solar_to_lunar(solar_year, solar_month, solar_day, hour)
+            lunar_month, lunar_day = lunar["month"], lunar["day"]
+            year_gz = lunar["year_ganzhi"]
             year_gan = year_gz[0]
 
             ming_gong_idx = _find_ming_gong_zhi(lunar_month, hour_zhi_idx)
@@ -411,20 +441,22 @@ class ZiweiToolkit(Toolkit):
             if body_palace_name not in palaces:
                 body_palace_name = "命宫"
 
-            return json.dumps({
+            result = {
                 "success": True,
-                "出生信息": f"{year}年{month}月{day}日{hour}时",
+                "出生信息": (
+                    f"{solar_year}年{solar_month}月{solar_day}日{hour}时"
+                ),
                 "农历日期": (
                     f"{year_gz}年农历{lunar_month}月{lunar_day}日"
                 ),
                 "农历数值": {
-                    "year": year,
+                    "year": lunar["year"],
                     "month": lunar_month,
                     "day": lunar_day,
                     "is_leap_month": is_leap_month,
                 },
                 "性别": gender,
-                "历法输入": "农历" if is_lunar else "公历转农历",
+                "历法输入": "农历转公历后排盘" if is_lunar else "公历转农历",
                 "排盘引擎": "approximate-fallback",
                 "后端状态": {
                     **backend_status,
@@ -443,7 +475,7 @@ class ZiweiToolkit(Toolkit):
                     "煞星、流年飞化和完整紫微校验规则。"
                 ),
                 "年干支": year_gz,
-                "生肖": animal_year(year),
+                "生肖": animal_year(lunar["year"]),
                 "命宫": {
                     "地支": ming_gong_zhi,
                     "位置索引": ming_gong_idx,
@@ -461,7 +493,7 @@ class ZiweiToolkit(Toolkit):
                     "calendar_input": "农历" if is_lunar else "公历转农历",
                     "solar_date": f"{solar_year}-{solar_month}-{solar_day}",
                     "lunar_date": (
-                        f"{year}年{lunar_month}月{lunar_day}日"
+                        f"{lunar['year']}年{lunar_month}月{lunar_day}日"
                     ),
                     "hour": hour,
                     "zi_hour_convention": zi_hour_convention,
@@ -470,7 +502,10 @@ class ZiweiToolkit(Toolkit):
                     "warning": "近似回退盘不含完整四化与辅星数据。",
                     "backend_status": backend_status,
                 },
-            }, ensure_ascii=False)
+            }
+            result["chart_id"] = computed_chart.get("chart_id")
+            result["birth_time"] = computed_chart.get("birth_time")
+            return json.dumps(result, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 

@@ -6,7 +6,7 @@ Uses BaziToolkit + ZiweiToolkit for scoring.
 from __future__ import annotations
 
 import hashlib, json, os, sys, time, re, random
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -19,7 +19,8 @@ from tools.calendar_engine import (
     build_four_pillars, build_dayun, build_dayun_precise, build_liunian,
     shi_shen, five_element_strength, nayin, year_ganzhi,
     day_ganzhi_from_date, hour_ganzhi, month_ganzhi,
-    changsheng_state, kong_wang, animal_year, wuxing_relation,
+    changsheng_state, kong_wang, animal_year, lunar_new_year_datetime,
+    solar_term_datetime, wuxing_relation,
 )
 
 shen = shi_shen
@@ -37,6 +38,7 @@ from tools.chart_assessment import (
     classify_preference_signals,
     get_resolved_preference,
 )
+from tools.computed_chart import ComputedChart
 from tools.safety_policy import assess_rules_suggestion_request
 
 
@@ -449,7 +451,140 @@ def _j(s):
         return {}
 
 
-def compute_chart(bi):
+def _chart_id_for(
+    effective_time: datetime,
+    calendar_time: datetime,
+    gender: str,
+    year_boundary: str,
+    time_basis: str,
+    zi_hour_convention: str,
+) -> str:
+    payload = {
+        "effective_time": effective_time.isoformat(timespec="seconds"),
+        "calendar_time": calendar_time.isoformat(timespec="seconds"),
+        "gender": gender,
+        "year_boundary": year_boundary,
+        "time_basis": time_basis,
+        "zi_hour_convention": zi_hour_convention,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True).encode()
+    ).hexdigest()[:16]
+
+
+def _uncertainty_candidate_times(
+    effective_time: datetime,
+    calendar_time: datetime,
+    uncertainty_minutes: int,
+    year_boundary: str,
+) -> list[tuple[datetime, list[str]]]:
+    """Enumerate every hour/day and calendar-boundary chart in an interval."""
+    start = effective_time - timedelta(minutes=uncertainty_minutes)
+    end = effective_time + timedelta(minutes=uncertainty_minutes)
+    candidates: dict[datetime, list[str]] = {
+        start: ["range_start"],
+        effective_time: ["nominal"],
+        end: ["range_end"],
+    }
+
+    def add_candidate(value: datetime, reason: str) -> None:
+        if start <= value <= end:
+            candidates.setdefault(value, []).append(reason)
+
+    day_cursor = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    final_day = end.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day_cursor <= final_day:
+        for hour in (1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23):
+            add_candidate(
+                day_cursor.replace(hour=hour),
+                "hour_or_day_boundary",
+            )
+        day_cursor += timedelta(days=1)
+
+    calendar_offset = calendar_time - effective_time
+    calendar_start = start + calendar_offset
+    calendar_end = end + calendar_offset
+    for year in range(calendar_start.year - 1, calendar_end.year + 2):
+        for term_index in range(0, 24, 2):
+            boundary = solar_term_datetime(year, term_index)
+            if calendar_start <= boundary <= calendar_end:
+                add_candidate(boundary - calendar_offset, "solar_term_boundary")
+        if year_boundary == "lunar_new_year":
+            boundary = lunar_new_year_datetime(year)
+            if calendar_start <= boundary <= calendar_end:
+                add_candidate(boundary - calendar_offset, "lunar_new_year_boundary")
+
+    return sorted(candidates.items(), key=lambda item: item[0])
+
+
+def _candidate_charts(
+    effective_time: datetime,
+    calendar_time: datetime,
+    uncertainty_minutes: int,
+    gender: str,
+    year_boundary: str,
+    time_basis: str,
+    zi_hour_convention: str,
+    nominal_pillars: dict,
+) -> list[dict]:
+    """Return all distinct four-pillar candidates within the uncertainty range."""
+    candidates_by_pillars: dict[tuple[tuple[str, str], ...], dict] = {}
+    for candidate_time, reasons in _uncertainty_candidate_times(
+        effective_time,
+        calendar_time,
+        uncertainty_minutes,
+        year_boundary,
+    ):
+        candidate_calendar_time = calendar_time + (
+            candidate_time - effective_time
+        )
+        pillars = build_four_pillars(
+            candidate_time.year,
+            candidate_time.month,
+            candidate_time.day,
+            candidate_time.hour,
+            gender=gender,
+            minute=candidate_time.minute,
+            second=candidate_time.second,
+            year_boundary=year_boundary,
+            term_datetime=candidate_calendar_time,
+        )["四柱"]
+        pillar_key = tuple(sorted(pillars.items()))
+        changed_fields = [
+            name for name, value in pillars.items()
+            if nominal_pillars.get(name) != value
+        ]
+        entry = candidates_by_pillars.setdefault(
+            pillar_key,
+            {
+                "effective_time": candidate_time.isoformat(timespec="seconds"),
+                "calendar_time": candidate_calendar_time.isoformat(
+                    timespec="seconds"
+                ),
+                "chart_id": _chart_id_for(
+                    candidate_time,
+                    candidate_calendar_time,
+                    gender,
+                    year_boundary,
+                    time_basis,
+                    zi_hour_convention,
+                ),
+                "四柱": pillars,
+                "changed_fields": changed_fields,
+                "boundaries": [],
+            },
+        )
+        entry["boundaries"].extend(reasons)
+
+    for entry in candidates_by_pillars.values():
+        entry["boundaries"] = sorted(set(entry["boundaries"]))
+    return sorted(
+        candidates_by_pillars.values(),
+        key=lambda item: item["effective_time"],
+    )
+
+
+def compute_chart(bi) -> ComputedChart:
     normalized_context = normalize_birth_context(
         bi, bi.get("birth_context")
     )
@@ -466,7 +601,7 @@ def compute_chart(bi):
     year_boundary = bi.get("year_boundary", "lichun")
     if not all([y, m, d]):
         return {}
-    c = build_four_pillars(
+    c = ComputedChart(build_four_pillars(
         y,
         m,
         d,
@@ -475,7 +610,8 @@ def compute_chart(bi):
         minute=minute,
         second=second,
         year_boundary=year_boundary,
-    )
+        term_datetime=normalized_context.calendar_time,
+    ))
     c["gender"] = g
     c["birth_year"] = y
     c["birth_month"] = m
@@ -487,16 +623,14 @@ def compute_chart(bi):
     c["birth_time"] = normalized_context.as_dict()
     attach_strength_assessment(c)
 
-    chart_id_payload = {
-        "effective_time": c["birth_time"]["effective_time"],
-        "gender": g,
-        "year_boundary": year_boundary,
-        "time_basis": c["birth_time"]["time_basis"],
-        "zi_hour_convention": c["birth_time"]["zi_hour_convention"],
-    }
-    c["chart_id"] = hashlib.sha256(
-        json.dumps(chart_id_payload, sort_keys=True).encode()
-    ).hexdigest()[:16]
+    c["chart_id"] = _chart_id_for(
+        effective,
+        normalized_context.calendar_time,
+        g,
+        year_boundary,
+        c["birth_time"]["time_basis"],
+        c["birth_time"]["zi_hour_convention"],
+    )
 
     pillars = c.get("四柱", {})
     ygz = pillars.get("年柱", "")
@@ -511,40 +645,30 @@ def compute_chart(bi):
             minute=minute,
             second=second,
             year_boundary=year_boundary,
+            term_datetime=normalized_context.calendar_time,
         )
         c["大运精度"] = c["大运"][0].get("精度", "unknown") if c["大运"] else "unknown"
     if normalized_context.uncertainty_minutes:
-        variants = []
-        for label, delta in (
-            ("earliest", -normalized_context.uncertainty_minutes),
-            ("latest", normalized_context.uncertainty_minutes),
-        ):
-            candidate = effective + timedelta(minutes=delta)
-            candidate_pillars = build_four_pillars(
-                candidate.year,
-                candidate.month,
-                candidate.day,
-                candidate.hour,
-                gender=g,
-                minute=candidate.minute,
-                second=candidate.second,
-                year_boundary=year_boundary,
-            )["四柱"]
-            if candidate_pillars != c["四柱"]:
-                variants.append({
-                    "boundary": label,
-                    "effective_time": candidate.isoformat(timespec="seconds"),
-                    "四柱": candidate_pillars,
-                })
+        variants = _candidate_charts(
+            effective,
+            normalized_context.calendar_time,
+            normalized_context.uncertainty_minutes,
+            g,
+            year_boundary,
+            c["birth_time"]["time_basis"],
+            c["birth_time"]["zi_hour_convention"],
+            c["四柱"],
+        )
         c["birth_time"]["chart_stability"] = {
-            "stable": not variants,
+            "stable": len(variants) == 1,
             "candidate_charts": variants,
         }
     return c
 
 
-def _get_tool_data(bi):
-    chart = compute_chart(bi)
+def _get_tool_data(bi, chart: Optional[ComputedChart] = None):
+    """Build secondary data from the caller's canonical chart when supplied."""
+    chart = chart or compute_chart(bi)
     if not chart:
         return {}
     try:
@@ -636,8 +760,24 @@ def _score_ziwei(text, tool_data, cat):
     return s
 
 
-def year_ganzhi_detail(year, month=None, day=None, hour=12, minute=0, second=0):
-    gz = year_ganzhi(year, month, day, hour, minute, second)
+def year_ganzhi_detail(
+    year,
+    month=None,
+    day=None,
+    hour=12,
+    minute=0,
+    second=0,
+    year_boundary="lichun",
+):
+    gz = year_ganzhi(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        year_boundary=year_boundary,
+    )
     return {
         "ganzhi": gz, "gan": gz[0], "zhi": gz[1],
         "gan_wx": WUXING_GAN[gz[0]], "zhi_wx": WUXING_ZHI[gz[1]],
@@ -723,7 +863,12 @@ def eval_year(chart, year, target_month=7, target_day=1):
     wx = chart["五行力量"]
     tg = chart["十神"]
 
-    ln = year_ganzhi_detail(year, target_month, target_day)
+    ln = year_ganzhi_detail(
+        year,
+        target_month,
+        target_day,
+        year_boundary=chart.get("year_boundary", "lichun"),
+    )
     ln["gan_ss"] = shen(day_gan, ln["gan"])
     ln["zhi_cang"] = ZHI_CANG_GAN.get(ln["zhi"], [])
     ln["zhi_cang_ss"] = [shen(day_gan, c) for c in ln["zhi_cang"]]
@@ -1482,7 +1627,7 @@ def predict(q, chart_cache, qimen_data=None):
     if not chart:
         return None
 
-    td = _get_tool_data(bi)
+    td = _get_tool_data(bi, chart)
 
     tg = chart.get("十神", {})
     q_year = extract_question_year(q_text)

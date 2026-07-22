@@ -31,8 +31,9 @@ def get_ziwei_chart(
     hour,
     gender="男",
     zi_hour_convention="benchmark",
+    chart=None,
 ):
-    """Get full Ziwei Dou Shu chart."""
+    """Get a Ziwei chart from the shared ComputedChart when available."""
     result = _zw.paipan(
         year,
         month,
@@ -40,6 +41,7 @@ def get_ziwei_chart(
         hour,
         gender,
         zi_hour_convention=zi_hour_convention,
+        computed_chart=chart,
     )
     return json.loads(result)
 
@@ -177,23 +179,35 @@ ZIWEI_STAR_MARRIAGE_TYPE = {
 def build_tool_data(year, month, day, hour, gender="男", chart=None):
     """Build derived data from one already-computed chart when available."""
     data = {"component_status": {}}
-    if chart:
-        data["chart_id"] = chart.get("chart_id")
-        effective_year = chart.get("birth_year", year)
-        effective_month = chart.get("birth_month", month)
-        effective_day = chart.get("birth_day", day)
-        effective_hour = chart.get("birth_hour", hour)
-        zi_hour_convention = chart.get("birth_time", {}).get(
-            "zi_hour_convention", "benchmark"
-        )
+    if chart is None:
+        from engine.run_tools_engine import compute_chart
+
+        chart = compute_chart({
+            "year": year,
+            "month": month,
+            "day": day,
+            "hour": hour,
+            "gender": gender,
+        })
+        data["component_status"]["bazi"] = {
+            "status": "degraded",
+            "code": "chart_reconstructed_from_legacy_arguments",
+            "message": "未提供共享命盘，已从完整出生参数构建一份 ComputedChart。",
+        }
     else:
-        effective_year, effective_month, effective_day, effective_hour = (
-            year,
-            month,
-            day,
-            hour,
-        )
-        zi_hour_convention = "benchmark"
+        data["component_status"]["bazi"] = {
+            "status": "ok",
+            "backend": "shared-computed-chart",
+        }
+
+    data["chart_id"] = chart.get("chart_id")
+    effective_year = chart.get("birth_year", year)
+    effective_month = chart.get("birth_month", month)
+    effective_day = chart.get("birth_day", day)
+    effective_hour = chart.get("birth_hour", hour)
+    zi_hour_convention = chart.get("birth_time", {}).get(
+        "zi_hour_convention", "benchmark"
+    )
 
     try:
         ziwei = get_ziwei_chart(
@@ -203,6 +217,7 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
             effective_hour,
             gender,
             zi_hour_convention,
+            chart,
         )
     except Exception as exc:
         ziwei = {"success": False, "error": str(exc)}
@@ -243,27 +258,6 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
             "status": "error",
             "code": "ziwei_unavailable",
             "message": ziwei.get("error", "紫微排盘未返回成功结果。"),
-        }
-
-    if chart is None:
-        data["component_status"]["bazi"] = {
-            "status": "degraded",
-            "code": "chart_not_shared",
-            "message": "未提供共享命盘，附加八字分析按单独排盘生成。",
-        }
-        from engine.run_tools_engine import compute_chart
-
-        chart = compute_chart({
-            "year": effective_year,
-            "month": effective_month,
-            "day": effective_day,
-            "hour": effective_hour,
-            "gender": gender,
-        })
-    else:
-        data["component_status"]["bazi"] = {
-            "status": "ok",
-            "backend": "shared-computed-chart",
         }
 
     analyzers = {

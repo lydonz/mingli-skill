@@ -117,6 +117,7 @@ class HybridAuditTests(unittest.TestCase):
             self.assertEqual(result["report_version"], "html-report-v2")
             self.assertTrue(result["html"].startswith("<!doctype html>"))
             self.assertNotIn("https://", result["html"])
+            self.assertIn("calendar_time", result["html"])
             self.assertEqual(Path(result["output_path"]), output_path.resolve())
             self.assertEqual(output_path.read_text(encoding="utf-8"), result["html"])
 

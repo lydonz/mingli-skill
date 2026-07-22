@@ -15,8 +15,9 @@ from .calendar_engine import (
     build_four_pillars, build_dayun, build_dayun_precise, build_liunian,
     calculate_dayun_start, year_ganzhi, day_ganzhi_from_date, hour_ganzhi,
     day_ganzhi_from_datetime, month_ganzhi, shi_shen, five_element_strength,
-    nayin, solar_to_lunar,
+    lunar_new_year_datetime, nayin, solar_to_lunar,
 )
+from .computed_chart import ComputedChart
 from .report_renderer import render_html_report, write_html_report
 from .interpretation_contract import (
     INTERPRETATION_SCHEMA_VERSION,
@@ -78,6 +79,7 @@ __all__ = [
     "build_dayun_precise",
     "build_liunian",
     "calculate_dayun_start",
+    "ComputedChart",
     "year_ganzhi",
     "day_ganzhi_from_date",
     "day_ganzhi_from_datetime",
@@ -86,6 +88,7 @@ __all__ = [
     "shi_shen",
     "five_element_strength",
     "nayin",
+    "lunar_new_year_datetime",
     "solar_to_lunar",
     "render_html_report",
     "write_html_report",

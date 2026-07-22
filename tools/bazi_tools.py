@@ -30,11 +30,25 @@ def _build_analysis_chart(
     gender: str = "男",
     minute: int = 0,
     second: int = 0,
+    birth_context: Optional[dict] = None,
+    year_boundary: str = "lichun",
 ) -> dict:
-    chart = build_four_pillars(
-        year, month, day, hour, gender=gender, minute=minute, second=second
-    )
-    return attach_strength_assessment(chart)
+    """Use the canonical chart builder instead of a local hour-only rebuild."""
+    from engine.run_tools_engine import compute_chart
+
+    birth_info = {
+        "year": year,
+        "month": month,
+        "day": day,
+        "hour": hour,
+        "minute": minute,
+        "second": second,
+        "gender": gender,
+        "year_boundary": year_boundary,
+    }
+    if birth_context is not None:
+        birth_info["birth_context"] = birth_context
+    return compute_chart(birth_info)
 
 
 def _with_evidence(chart: dict, payload: dict, signals: dict) -> dict:
@@ -43,6 +57,7 @@ def _with_evidence(chart: dict, payload: dict, signals: dict) -> dict:
     ]
     payload["ruleset_version"] = INTERPRETATION_RULESET_VERSION
     payload["chart_id"] = chart.get("chart_id")
+    payload["birth_time"] = chart.get("birth_time")
     payload["strength_assessment_version"] = assessment["version"]
     payload["preference_ruleset_version"] = assessment[
         "preference_ruleset_version"
@@ -57,6 +72,17 @@ def _with_evidence(chart: dict, payload: dict, signals: dict) -> dict:
     payload["component_status"] = {
         "status": "ok",
         "backend": "calendar_engine",
+    }
+    return payload
+
+
+def _with_chart_audit(chart: dict, payload: dict) -> dict:
+    """Attach the canonical-chart identity to direct personal analyses."""
+    payload["chart_id"] = chart.get("chart_id")
+    payload["birth_time"] = chart.get("birth_time")
+    payload["component_status"] = {
+        "status": "ok",
+        "backend": "shared-computed-chart",
     }
     return payload
 
@@ -261,6 +287,7 @@ class BaziToolkit(Toolkit):
             self.analyze_dayun,
             self.analyze_liunian,
             self.analyze_liuyue,
+            self.analyze_liuyue_by_date,
             self.analyze_liuri,
             self.check_chong_he,
             self.find_shensha,
@@ -276,8 +303,18 @@ class BaziToolkit(Toolkit):
         ]
         super().__init__(name="bazi_tools", tools=tools, **kwargs)
 
-    def paipan(self, year: int, month: int, day: int, hour: int,
-               gender: str = "男", minute: int = 0, second: int = 0) -> str:
+    def paipan(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int,
+        gender: str = "男",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
+    ) -> str:
         """
         排八字命盘：根据公历出生时间排出四柱八字命盘，包含十神、五行、纳音、十二长生等完整信息。
 
@@ -290,7 +327,15 @@ class BaziToolkit(Toolkit):
         """
         try:
             result = _build_analysis_chart(
-                year, month, day, hour, gender, minute, second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             result["性别"] = gender
             result["出生公历"] = (
@@ -313,7 +358,15 @@ class BaziToolkit(Toolkit):
         """
         try:
             dayun_list = build_dayun(gender, year_ganzhi, month_ganzhi, start_age)
-            return json.dumps({"success": True, "大运": dayun_list}, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "大运": dayun_list,
+                "component_status": {
+                    "status": "degraded",
+                    "code": "raw_pillar_input",
+                    "message": "该低层工具只接收年柱和月柱，未关联 ComputedChart。",
+                },
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -347,6 +400,53 @@ class BaziToolkit(Toolkit):
                 "月柱干支": mgz,
                 "天干五行": WUXING_GAN[mgz[0]],
                 "地支五行": WUXING_ZHI[mgz[1]],
+                "component_status": {
+                    "status": "degraded",
+                    "code": "legacy_lunar_month_mapping",
+                    "message": (
+                        "该兼容接口按农历月序映射，不处理节气边界；"
+                        "精确流月请使用 analyze_liuyue_by_date。"
+                    ),
+                },
+            }, ensure_ascii=False)
+        except Exception as e:
+            return json.dumps({"success": False, "error": str(e)})
+
+    def analyze_liuyue_by_date(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int = 12,
+        minute: int = 0,
+        second: int = 0,
+        year_boundary: str = "lichun",
+        birth_context: Optional[dict] = None,
+    ) -> str:
+        """Return the exact Bazi flow month for a concrete civil date/time."""
+        try:
+            chart = _build_analysis_chart(
+                year,
+                month,
+                day,
+                hour,
+                minute=minute,
+                second=second,
+                birth_context=birth_context,
+                year_boundary=year_boundary,
+            )
+            return json.dumps({
+                "success": True,
+                "流年干支": chart["四柱"]["年柱"],
+                "流月干支": chart["四柱"]["月柱"],
+                "目标时间": chart["birth_time"]["effective_time"],
+                "calendar_time": chart["birth_time"]["calendar_time"],
+                "chart_id": chart["chart_id"],
+                "birth_time": chart["birth_time"],
+                "component_status": {
+                    "status": "ok",
+                    "backend": "shared-computed-chart",
+                },
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -506,8 +606,18 @@ class BaziToolkit(Toolkit):
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
-    def analyze_huoyuan(self, year: int, month: int, day: int, hour: int,
-                        gender: str = "男", minute: int = 0, second: int = 0) -> str:
+    def analyze_huoyuan(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int,
+        gender: str = "男",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
+    ) -> str:
         """
         分析火候（格局）：根据八字排盘判断日主旺衰，分析命局格局。
 
@@ -520,13 +630,32 @@ class BaziToolkit(Toolkit):
         """
         try:
             chart = _build_analysis_chart(
-                year, month, day, hour, gender, minute, second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             return json.dumps(analyze_huoyuan_chart(chart), ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
-    def analyze_guan_sha(self, year: int, month: int, day: int, hour: int) -> str:
+    def analyze_guan_sha(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int,
+        gender: str = "男",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
+    ) -> str:
         """
         分析官杀：分析八字中正官、七杀的分布及对命主的影响。
 
@@ -537,7 +666,17 @@ class BaziToolkit(Toolkit):
             hour: 出生时辰
         """
         try:
-            chart = build_four_pillars(year, month, day, hour)
+            chart = _build_analysis_chart(
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
+            )
             ten_gods = chart["十神"]
             guan_positions = []
             sha_positions = []
@@ -547,7 +686,7 @@ class BaziToolkit(Toolkit):
                 elif val == "七杀":
                     sha_positions.append(key)
 
-            return json.dumps({
+            return json.dumps(_with_chart_audit(chart, {
                 "success": True,
                 "正官位置": guan_positions,
                 "七杀位置": sha_positions,
@@ -555,11 +694,22 @@ class BaziToolkit(Toolkit):
                 "正官数量": len(guan_positions),
                 "七杀数量": len(sha_positions),
                 "提示": "官杀混杂" if guan_positions and sha_positions else "清纯",
-            }, ensure_ascii=False)
+            }), ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
-    def analyze_cai_xing(self, year: int, month: int, day: int, hour: int) -> str:
+    def analyze_cai_xing(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int,
+        gender: str = "男",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
+    ) -> str:
         """
         分析财星：分析八字中正财、偏财的分布。
 
@@ -570,7 +720,17 @@ class BaziToolkit(Toolkit):
             hour: 出生时辰
         """
         try:
-            chart = build_four_pillars(year, month, day, hour)
+            chart = _build_analysis_chart(
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
+            )
             ten_gods = chart["十神"]
             zheng_cai = []
             pian_cai = []
@@ -580,18 +740,21 @@ class BaziToolkit(Toolkit):
                 elif val == "偏财":
                     pian_cai.append(key)
 
-            return json.dumps({
+            return json.dumps(_with_chart_audit(chart, {
                 "success": True,
                 "正财位置": zheng_cai,
                 "偏财位置": pian_cai,
                 "财星总数": len(zheng_cai) + len(pian_cai),
-            }, ensure_ascii=False)
+            }), ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
     def analyze_yin_shou(
         self, year: int, month: int, day: int, hour: int,
         minute: int = 0, second: int = 0,
+        gender: str = "男",
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
     ) -> str:
         """
         分析印绶：分析八字中正印、偏印的分布。
@@ -604,14 +767,32 @@ class BaziToolkit(Toolkit):
         """
         try:
             chart = _build_analysis_chart(
-                year, month, day, hour, minute=minute, second=second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             return json.dumps(analyze_yin_shou_chart(chart), ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
-    def analyze_marriage(self, year: int, month: int, day: int, hour: int,
-                         gender: str = "男", minute: int = 0, second: int = 0) -> str:
+    def analyze_marriage(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int,
+        gender: str = "男",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
+    ) -> str:
         """
         分析婚姻宫：分析日支（配偶宫）及财/官星对婚姻的影响。
 
@@ -624,7 +805,15 @@ class BaziToolkit(Toolkit):
         """
         try:
             chart = _build_analysis_chart(
-                year, month, day, hour, gender, minute, second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             return json.dumps(
                 analyze_marriage_chart(chart, gender), ensure_ascii=False
@@ -632,8 +821,18 @@ class BaziToolkit(Toolkit):
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
-    def analyze_career(self, year: int, month: int, day: int, hour: int,
-                       gender: str = "男", minute: int = 0, second: int = 0) -> str:
+    def analyze_career(
+        self,
+        year: int,
+        month: int,
+        day: int,
+        hour: int,
+        gender: str = "男",
+        minute: int = 0,
+        second: int = 0,
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
+    ) -> str:
         """
         分析事业：分析官杀、印绶对事业发展的影响。
 
@@ -646,7 +845,15 @@ class BaziToolkit(Toolkit):
         """
         try:
             chart = _build_analysis_chart(
-                year, month, day, hour, gender, minute, second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             return json.dumps(analyze_career_chart(chart), ensure_ascii=False)
         except Exception as e:
@@ -655,6 +862,9 @@ class BaziToolkit(Toolkit):
     def analyze_health(
         self, year: int, month: int, day: int, hour: int,
         minute: int = 0, second: int = 0,
+        gender: str = "男",
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
     ) -> str:
         """
         分析健康：根据五行偏缺分析潜在健康倾向。五行对应五脏：木-肝、火-心、土-脾、金-肺、水-肾。
@@ -667,7 +877,15 @@ class BaziToolkit(Toolkit):
         """
         try:
             chart = _build_analysis_chart(
-                year, month, day, hour, minute=minute, second=second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             return json.dumps(analyze_health_chart(chart), ensure_ascii=False)
         except Exception as e:
@@ -676,6 +894,9 @@ class BaziToolkit(Toolkit):
     def analyze_wealth(
         self, year: int, month: int, day: int, hour: int,
         minute: int = 0, second: int = 0,
+        gender: str = "男",
+        birth_context: Optional[dict] = None,
+        year_boundary: str = "lichun",
     ) -> str:
         """
         分析财运：分析财星力量、位置及与日主的关系。
@@ -688,7 +909,15 @@ class BaziToolkit(Toolkit):
         """
         try:
             chart = _build_analysis_chart(
-                year, month, day, hour, minute=minute, second=second
+                year,
+                month,
+                day,
+                hour,
+                gender,
+                minute,
+                second,
+                birth_context,
+                year_boundary,
             )
             return json.dumps(analyze_wealth_chart(chart), ensure_ascii=False)
         except Exception as e:

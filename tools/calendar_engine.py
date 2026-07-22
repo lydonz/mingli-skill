@@ -206,6 +206,14 @@ def solar_term_datetime(year: int, term_index: int) -> datetime:
     return _solar_term_datetime(year, term_index)
 
 
+def lunar_new_year_datetime(year: int) -> datetime:
+    """Return the calendar-backend midnight at the lunar new-year boundary."""
+    if _LunarPython is None:
+        raise _calendar_backend_error()
+    solar = _LunarPython.fromYmdHms(year, 1, 1, 0, 0, 0).getSolar()
+    return datetime(solar.getYear(), solar.getMonth(), solar.getDay())
+
+
 def _get_solar_term_date(year: int, term_index: int) -> Tuple[int, int]:
     """Return (month, day) for the given solar term in the given year.
     term_index: 0=小寒, 1=大寒, 2=立春, ..., 23=冬至
@@ -284,6 +292,7 @@ def year_ganzhi(
     hour: int = 12,
     minute: int = 0,
     second: int = 0,
+    year_boundary: str = "lichun",
 ) -> str:
     """Return the Bazi year pillar.
 
@@ -291,10 +300,18 @@ def year_ganzhi(
     year after 立春.  Birth-chart callers must pass month/day/hour so a date
     before 立春 is assigned to the previous Bazi year.
     """
+    if year_boundary not in ("lichun", "lunar_new_year"):
+        raise ValueError("year_boundary 必须是 'lichun' 或 'lunar_new_year'")
     if month is None or day is None:
         bazi_year = year
-    else:
+    elif year_boundary == "lichun":
         bazi_year = _get_bazi_year(year, month, day, hour, minute, second)
+    else:
+        if _SolarPython is None:
+            raise _calendar_backend_error()
+        bazi_year = _SolarPython.fromYmdHms(
+            year, month, day, hour, minute, second
+        ).getLunar().getYear()
     idx = (bazi_year - 4) % 60
     return ganzhi_from_offset(idx)
 
@@ -470,6 +487,7 @@ def build_four_pillars(
     is_leap_month: bool = False,
     year_boundary: str = "lichun",
     second: int = 0,
+    term_datetime: Optional[datetime] = None,
 ) -> Dict:
     if is_lunar:
         if _LunarPython is None:
@@ -480,19 +498,34 @@ def build_four_pillars(
         ).getSolar()
         year, month, day = solar.getYear(), solar.getMonth(), solar.getDay()
 
-    solar_year_gz = year_ganzhi(year, month, day, hour, minute, second)
-    if year_boundary == "lichun":
-        ygz = solar_year_gz
-    elif year_boundary == "lunar_new_year":
-        if _SolarPython is None:
-            raise _calendar_backend_error()
-        lunar_year = _SolarPython.fromYmdHms(
-            year, month, day, hour, minute, second
-        ).getLunar().getYear()
-        ygz = ganzhi_from_offset((lunar_year - 4) % 60)
-    else:
-        raise ValueError("year_boundary 必须是 'lichun' 或 'lunar_new_year'")
-    bazi_month = _get_bazi_month(year, month, day, hour, minute, second)
+    term_time = term_datetime or datetime(year, month, day, hour, minute, second)
+    if term_time.tzinfo is not None:
+        term_time = term_time.replace(tzinfo=None)
+    solar_year_gz = year_ganzhi(
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        term_time.minute,
+        term_time.second,
+    )
+    ygz = year_ganzhi(
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        term_time.minute,
+        term_time.second,
+        year_boundary=year_boundary,
+    )
+    bazi_month = _get_bazi_month(
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        term_time.minute,
+        term_time.second,
+    )
     day_gz = day_ganzhi_from_datetime(
         year, month, day, hour, minute, second=second
     )
@@ -543,8 +576,25 @@ def build_four_pillars(
         "日主五行": day_wx,
         "日主阴阳": YINYANG_GAN[day_gan],
         "生肖": animal_year(
-            _get_bazi_year(year, month, day, hour, minute, second)
-            if year_boundary == "lichun" else lunar_year
+            (
+                _get_bazi_year(
+                    term_time.year,
+                    term_time.month,
+                    term_time.day,
+                    term_time.hour,
+                    term_time.minute,
+                    term_time.second,
+                )
+                if year_boundary == "lichun" else
+                _SolarPython.fromYmdHms(
+                    term_time.year,
+                    term_time.month,
+                    term_time.day,
+                    term_time.hour,
+                    term_time.minute,
+                    term_time.second,
+                ).getLunar().getYear()
+            )
         ),
         "十神": ten_gods,
         "五行力量": wuxing_score,
@@ -613,6 +663,8 @@ def calculate_dayun_start(
     gender: str,
     minute: int = 0,
     second: int = 0,
+    year_boundary: str = "lichun",
+    calendar_datetime: Optional[datetime] = None,
 ) -> Dict:
     """Calculate the civil start datetime of the first Da Yun.
 
@@ -620,7 +672,20 @@ def calculate_dayun_start(
     calculates from the actual preceding/following ``jie`` boundary.  The
     explicit date lets callers handle transitions inside a Gregorian year.
     """
-    ygz = year_ganzhi(year, month, day, hour, minute, second)
+    term_time = calendar_datetime or datetime(
+        year, month, day, hour, minute, second
+    )
+    if term_time.tzinfo is not None:
+        term_time = term_time.replace(tzinfo=None)
+    ygz = year_ganzhi(
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        term_time.minute,
+        term_time.second,
+        year_boundary=year_boundary,
+    )
     forward = (
         (gender in ("男", "M", "male") and TIANGAN_IDX[ygz[0]] % 2 == 0)
         or (gender not in ("男", "M", "male") and TIANGAN_IDX[ygz[0]] % 2 == 1)
@@ -634,10 +699,25 @@ def calculate_dayun_start(
         }
 
     lunar = _SolarPython.fromYmdHms(
-        year, month, day, hour, minute, second
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        term_time.minute,
+        term_time.second,
     ).getLunar()
+    backend_year_gz = year_ganzhi(
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        term_time.minute,
+        term_time.second,
+    )
+    backend_year_is_yang = TIANGAN_IDX[backend_year_gz[0]] % 2 == 0
+    backend_gender = 1 if backend_year_is_yang == forward else 0
     yun = lunar.getEightChar().getYun(
-        1 if gender in ("男", "M", "male") else 0,
+        backend_gender,
         1,
     )
     start_solar = yun.getStartSolar()
@@ -651,7 +731,7 @@ def calculate_dayun_start(
     )
     return {
         "start_datetime": start,
-        "forward": yun.isForward(),
+        "forward": forward,
         "years": yun.getStartYear(),
         "months": yun.getStartMonth(),
         "days": yun.getStartDay(),
@@ -668,8 +748,12 @@ def build_dayun_precise(
     minute: int = 0,
     second: int = 0,
     year_boundary: str = "lichun",
+    term_datetime: Optional[datetime] = None,
 ) -> List[Dict]:
     """Build Da Yun with actual transition dates and a quality marker."""
+    term_time = term_datetime or datetime(year, month, day, hour, minute, second)
+    if term_time.tzinfo is not None:
+        term_time = term_time.replace(tzinfo=None)
     chart = build_four_pillars(
         year,
         month,
@@ -679,9 +763,18 @@ def build_dayun_precise(
         minute=minute,
         second=second,
         year_boundary=year_boundary,
+        term_datetime=term_time,
     )
     start_info = calculate_dayun_start(
-        year, month, day, hour, gender, minute, second
+        term_time.year,
+        term_time.month,
+        term_time.day,
+        term_time.hour,
+        gender,
+        term_time.minute,
+        term_time.second,
+        year_boundary=year_boundary,
+        calendar_datetime=term_time,
     )
     start_dt = start_info["start_datetime"]
     if start_dt is None:
@@ -690,11 +783,8 @@ def build_dayun_precise(
             item["精度"] = "coarse"
         return result
 
-    year_gz = chart["四柱"]["年柱"]
     month_gz = chart["四柱"]["月柱"]
-    yin_yang = TIANGAN_IDX[year_gz[0]] % 2
-    male = gender in ("男", "M", "male")
-    forward = (male and yin_yang == 0) or (not male and yin_yang == 1)
+    forward = start_info["forward"]
     mg = TIANGAN_IDX[month_gz[0]]
     mz = DIZHI_IDX[month_gz[1]]
     result = []
@@ -703,8 +793,8 @@ def build_dayun_precise(
         z = (mz + i + 1) % 12 if forward else (mz - i - 1) % 12
         item_start = _add_calendar_years_months(start_dt, years=i * 10)
         item_end = _add_calendar_years_months(start_dt, years=(i + 1) * 10)
-        age_years = item_start.year - year
-        age_months = item_start.month - month
+        age_years = item_start.year - term_time.year
+        age_months = item_start.month - term_time.month
         if age_months < 0:
             age_years -= 1
             age_months += 12
@@ -720,6 +810,7 @@ def build_dayun_precise(
             "天干五行": WUXING_GAN[TIANGAN[g]],
             "地支五行": WUXING_ZHI[DIZHI[z]],
             "精度": "solar-term",
+            "年界规则": "立春" if year_boundary == "lichun" else "农历新年",
         })
     return result
 

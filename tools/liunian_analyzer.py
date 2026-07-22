@@ -20,7 +20,7 @@ from engine.run_tools_engine import (
 from tools.calendar_engine import (
     TIANGAN, DIZHI, WUXING_GAN, WUXING_ZHI,
     ZHI_CANG_GAN, WUXING_SHENG, build_four_pillars, year_ganzhi,
-    solar_term_datetime,
+    lunar_new_year_datetime, solar_term_datetime,
 )
 from tools.chart_assessment import get_resolved_preference
 
@@ -232,16 +232,28 @@ def _period_anchors(start: date, end: date, granularity: str) -> list[date]:
     ] or [start]
 
 
-def _lichun_segments(start: date, end: date) -> list[dict]:
-    """Split a civil interval at the precise Li Chun boundary."""
+def _year_boundary_segments(
+    start: date,
+    end: date,
+    year_boundary: str,
+) -> list[dict]:
+    """Split an interval at the configured Bazi-year boundary."""
     segments = []
     cursor = datetime.combine(start, datetime.min.time())
     final = datetime.combine(end + timedelta(days=1), datetime.min.time())
-    boundaries = [
-        solar_term_datetime(year, 2)
-        for year in range(start.year - 1, end.year + 2)
-    ]
-    for boundary in boundaries:
+    if year_boundary == "lichun":
+        boundaries = [
+            (solar_term_datetime(year, 2), "立春")
+            for year in range(start.year - 1, end.year + 2)
+        ]
+    elif year_boundary == "lunar_new_year":
+        boundaries = [
+            (lunar_new_year_datetime(year), "农历新年")
+            for year in range(start.year - 1, end.year + 2)
+        ]
+    else:
+        raise ValueError("year_boundary 必须是 'lichun' 或 'lunar_new_year'")
+    for boundary, boundary_name in boundaries:
         if cursor < boundary < final:
             segments.append({
                 "start": cursor.isoformat(timespec="seconds"),
@@ -253,8 +265,9 @@ def _lichun_segments(start: date, end: date) -> list[dict]:
                     cursor.hour,
                     cursor.minute,
                     cursor.second,
+                    year_boundary=year_boundary,
                 ),
-                "boundary": "立春",
+                "boundary": boundary_name,
             })
             cursor = boundary
     segments.append({
@@ -267,6 +280,7 @@ def _lichun_segments(start: date, end: date) -> list[dict]:
             cursor.hour,
             cursor.minute,
             cursor.second,
+            year_boundary=year_boundary,
         ),
     })
     return segments
@@ -295,6 +309,7 @@ def _flow_month_segments(chart: dict, start: date, end: date) -> list[dict]:
             gender=chart.get("gender", "男"),
             minute=segment_start.minute,
             second=segment_start.second,
+            year_boundary=chart.get("year_boundary", "lichun"),
         )
         flow_year = flow_chart["四柱"]["年柱"]
         flow_month = flow_chart["四柱"]["月柱"]
@@ -379,7 +394,11 @@ def integrate_year_analysis(
         start, end, granularity = _parse_period(analysis_period)
         anchors = _period_anchors(start, end, granularity)
         source = "explicit_period"
-        segments = _lichun_segments(start, end)
+        segments = _year_boundary_segments(
+            start,
+            end,
+            chart.get("year_boundary", "lichun"),
+        )
         month_segments = (
             _flow_month_segments(chart, start, end)
             if granularity in ("month", "day") else []
@@ -436,6 +455,7 @@ def integrate_year_analysis(
             "end": end.isoformat(),
             "granularity": granularity,
         },
+        "year_boundary": chart.get("year_boundary", "lichun"),
         "civil_to_bazi_year_segments": segments,
         "流月分段": month_segments,
         "检测到的年份": sorted({anchor.year for anchor in anchors}),
