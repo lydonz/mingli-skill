@@ -1,0 +1,50 @@
+{
+  "schema_version": "knowledge-pack-v1",
+  "id": "bazi-ziwei-mingli-cn",
+  "version": "2026.0.0+f086546f9d4a",
+  "title": "八字与紫微方法论参考包",
+  "source": {
+    "repository": "https://github.com/pengyunzhaoisme1207-bit/bazi-ziwei-mingli-cn",
+    "revision": "f086546f9d4ab0e6fd00f8c37364269241249115",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 Jacky Peng"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "6636505f5147d3213a2b5d77fe1bdb10056abff382d4c55086eb95bef91e0183",
+      "role": "license"
+    },
+    {
+      "path": "core/epistemology.md",
+      "sha256": "07aba426f9f966a97b2bc42a0c480d858d9b966836aad4b22806043feffa417a",
+      "role": "methodology"
+    },
+    {
+      "path": "core/methodology.md",
+      "sha256": "54955aa5fa04c762651fe30ecd5c1624863039e8a4996647ed8cb1d0606c7f83",
+      "role": "methodology"
+    },
+    {
+      "path": "core/工具书索引.md",
+      "sha256": "7566634daea426c430d4c2b1e2a18a81c20becf36334d92b1f60e9d2eb54c696",
+      "role": "bibliography"
+    },
+    {
+      "path": "core/紫微斗数概要.md",
+      "sha256": "bd76008ed195866568d18015c5b759bcc9d943ef67d9a5da781924da133d7c0e",
+      "role": "methodology"
+    }
+  ],
+  "allowed_uses": [
+    "为传统命理方法论、术语和阅读线索提供可追溯的本地参考",
+    "在结果中返回带来源、版本、文件、章节和行号的引用",
+    "辅助解释规则引擎已经输出的结构化信号及其不确定性"
+  ],
+  "prohibited_uses": [
+    "改变四柱、节气、紫微或大运的历法计算",
+    "将文档内容包装为可验证的未来事件预测证据",
+    "替代医疗、法律、投资、雇佣或其他重大现实决策",
+    "向外部服务发送出生资料、命盘或查询文本"
+  ]
+}

@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+node_modules/
+datasets/cache/
+logs/
+reports/
+/bench_*.txt
+/blind_*.json
+/chart_data.json
+/sampled_*.json
+.DS_Store

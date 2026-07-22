@@ -1,0 +1,8 @@
+interface:
+  display_name: "MingLi Skill"
+  short_description: "八字、紫微、真太阳时与可审计流年分析"
+  brand_color: "#A33B45"
+  default_prompt: "使用 MingLi Skill，基于出生信息与明确的时间口径分析八字、紫微或流年问题，并标出不确定性。"
+
+policy:
+  allow_implicit_invocation: true

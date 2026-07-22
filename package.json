@@ -1,0 +1,9 @@
+{
+  "name": "mingli-skill-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Runtime dependency for exact Ziwei chart generation.",
+  "dependencies": {
+    "iztro": "^2.5.8"
+  }
+}

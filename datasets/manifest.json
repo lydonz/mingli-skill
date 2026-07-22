@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "required_provenance_fields": [
+      "id",
+      "provider",
+      "repository",
+      "revision",
+      "license",
+      "evidence_level",
+      "allowed_uses",
+      "prohibited_uses"
+    ],
+    "rule": "Synthetic explanations and unverified calculators must never be reported as evidence that career, wealth, or other future events can be predicted accurately."
+  },
+  "sources": [
+    {
+      "id": "mingli-bench",
+      "provider": "github",
+      "repository": "DestinyLinker/MingLi-Bench",
+      "revision": "b7433280fd86d7a7c27debbc47d0303c218f0bfd",
+      "license": "MIT",
+      "evidence_level": "external_benchmark",
+      "data_kind": "chart_fixture_and_multiple_choice_benchmark",
+      "allowed_uses": [
+        "bazi_chart_regression",
+        "ziwei_chart_regression",
+        "multiple_choice_benchmark"
+      ],
+      "prohibited_uses": [
+        "event_prediction_training",
+        "event_prediction_accuracy_claim",
+        "real_world_outcome_claim"
+      ],
+      "notes": "Reference chart fixtures use iztro output. The benchmark measures agreement on its questions, not verification of future events."
+    },
+    {
+      "id": "czuo03-bazi-calculate-rlvr",
+      "provider": "huggingface",
+      "repository": "czuo03/bazi-calculate-rlvr",
+      "revision": "990b5a5f67398af0584e5e5427747b7742fc09e1",
+      "license": "CC-BY-4.0",
+      "evidence_level": "candidate_deterministic_calculation",
+      "data_kind": "synthetic_bazi_calculation",
+      "splits": {
+        "test": "data/test-00000-of-00001.parquet",
+        "train": "data/train-00000-of-00001.parquet"
+      },
+      "expected_columns": [
+        "birthday",
+        "question",
+        "answer"
+      ],
+      "allowed_uses": [
+        "bazi_chart_regression"
+      ],
+      "prohibited_uses": [
+        "event_prediction_training",
+        "event_prediction_accuracy_claim",
+        "real_world_outcome_claim",
+        "career_or_wealth_inference"
+      ],
+      "observed_calendar_convention": {
+        "term_boundary": "civil_date_start",
+        "day_pillar_boundary": "civil_midnight",
+        "hour_pillar_boundary": "late_zi"
+      },
+      "notes": "204,738 generated calculation samples according to its dataset card. Validate agreement independently before treating any row as a regression fixture."
+    },
+    {
+      "id": "czuo03-bazi-reasoning-300",
+      "provider": "huggingface",
+      "repository": "czuo03/bazi-reasoning-300",
+      "revision": "5d024fb89da1f9978330d1a8f2166b9a318b8f96",
+      "license": "CC-BY-4.0",
+      "evidence_level": "synthetic_reasoning",
+      "data_kind": "synthetic_question_reasoning_answer",
+      "splits": {
+        "train": "data/train-00000-of-00001.parquet"
+      },
+      "expected_columns": [
+        "question",
+        "reasoning",
+        "answer"
+      ],
+      "allowed_uses": [
+        "terminology_coverage",
+        "explanation_regression"
+      ],
+      "prohibited_uses": [
+        "rule_ground_truth",
+        "event_prediction_training",
+        "event_prediction_accuracy_claim",
+        "real_world_outcome_claim"
+      ],
+      "notes": "327 DeepSeek-R1-generated examples based on teaching materials. Use only to detect missing concepts or regressions in explanation structure."
+    },
+    {
+      "id": "amareshhebbar-bazi-sft",
+      "provider": "huggingface",
+      "repository": "AmareshHebbar/bazi-sft",
+      "revision": "fad87063b317612e4164dfb0e0e08572c3831df4",
+      "license": "Apache-2.0",
+      "evidence_level": "self_reported_unverified_calculator",
+      "data_kind": "synthetic_chart_and_rule_matched_response",
+      "splits": {
+        "test": "data/test-00000-of-00001.parquet",
+        "train": "data/train-00000-of-00001.parquet",
+        "validation": "data/validation-00000-of-00001.parquet"
+      },
+      "expected_columns": [
+        "example_id",
+        "facts",
+        "question_type",
+        "user_question",
+        "response"
+      ],
+      "allowed_uses": [
+        "isolated_implementation_comparison",
+        "response_format_regression"
+      ],
+      "prohibited_uses": [
+        "bazi_chart_ground_truth",
+        "event_prediction_training",
+        "event_prediction_accuracy_claim",
+        "real_world_outcome_claim",
+        "career_or_wealth_inference"
+      ],
+      "notes": "Its card explicitly says month/day/hour pillars were not independently verified. Keep it isolated from pass/fail chart accuracy metrics."
+    }
+  ]
+}
