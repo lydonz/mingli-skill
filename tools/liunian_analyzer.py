@@ -22,6 +22,7 @@ from tools.calendar_engine import (
     ZHI_CANG_GAN, WUXING_SHENG, build_four_pillars, year_ganzhi,
     solar_term_datetime,
 )
+from tools.chart_assessment import get_resolved_preference
 
 FLOW_MONTH_TERM_INDICES = (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
 
@@ -55,6 +56,11 @@ def analyze_single_year(chart: dict, year: int, anchor: date | None = None) -> d
         "天干十神": ln.get("gan_ss", ""),
         "地支藏干": ln.get("zhi_cang", []),
         "地支藏干十神": ln.get("zhi_cang_ss", []),
+        "喜忌信号": ln.get("preference_signals", {}),
+        "该年喜用相关": ln.get("is_yong", False),
+        "该年忌神相关": ln.get("is_ji", False),
+        # Keep the historical field names for callers that consume them. They
+        # represent broad direct-or-supporting signals, not a forecast label.
         "该年是喜用神年": ln.get("is_yong", False),
         "该年是忌神年": ln.get("is_ji", False),
     }
@@ -64,6 +70,9 @@ def analyze_single_year(chart: dict, year: int, anchor: date | None = None) -> d
             "大运干支": du.get("ganzhi", ""),
             "起运年龄": du.get("start_age", 0),
             "大运天干十神": du.get("gan_ss", ""),
+            "喜忌信号": du.get("preference_signals", {}),
+            "大运喜用相关": du.get("is_yong", False),
+            "大运忌神相关": du.get("is_ji", False),
             "大运是喜用神": du.get("is_yong", False),
             "大运是忌神": du.get("is_ji", False),
         }
@@ -87,11 +96,15 @@ def analyze_years(chart: dict, years: list[int]) -> dict:
     results = []
     for y in years:
         results.append(analyze_single_year(chart, y))
+    preference = get_resolved_preference(chart)
     return {
         "日主": chart.get("日主", ""),
         "日主强弱": chart.get("日主强弱", ""),
-        "喜用神": chart.get("喜用神", []),
-        "忌神": chart.get("忌神", []),
+        "旺衰": (chart.get("strength_assessment") or {}).get(
+            "旺衰", chart.get("日主强弱", "")
+        ),
+        "喜用神": preference["喜用神"],
+        "忌神": preference["忌神"],
         "四柱": chart.get("四柱", {}),
         "年份分析": results,
     }
@@ -112,15 +125,25 @@ def format_year_analysis(chart: dict, year: int) -> str:
         du = a["当前大运"]
         lines.append(f"  当前大运: {du['大运干支']} (起运{du['起运年龄']}岁) 天干十神: {du['大运天干十神']}")
 
-    tag_yong = "★喜用神年★" if a["该年是喜用神年"] else ""
-    tag_ji = "⚠忌神年⚠" if a["该年是忌神年"] else ""
-    tag = tag_yong or tag_ji or "平年"
-    lines.append(f"  年运属性: {tag}")
+    preference_signals = a.get("喜忌信号", {})
+    favorable = [
+        item["code"] for item in preference_signals.get("favorable", [])
+    ]
+    adverse = [
+        item["code"] for item in preference_signals.get("adverse", [])
+    ]
+    if favorable or adverse:
+        lines.append(
+            "  喜忌信号: "
+            f"喜用相关={favorable or '无'}; 忌神相关={adverse or '无'}"
+        )
+    else:
+        lines.append("  喜忌信号: 无")
 
     if a.get("冲"):
-        lines.append(f"  冲: {'; '.join(a['冲'])} (冲主动荡/变动/冲突)")
+        lines.append(f"  冲: {'; '.join(a['冲'])} (传统结构信号)")
     if a.get("合"):
-        lines.append(f"  合: {'; '.join(a['合'])} (合主合作/结合/牵绊)")
+        lines.append(f"  合: {'; '.join(a['合'])} (传统结构信号)")
 
     lines.append(f"  出现十神: {a['流年十神集合']}")
     return "\n".join(lines)
@@ -131,18 +154,23 @@ def format_years_compare(chart: dict, years: list[int]) -> str:
     lines = []
     lines.append(f"\n{'#'*60}")
     lines.append(f"  多年流年对比分析")
-    lines.append(f"  日主: {chart.get('日主','')}({chart.get('日主五行','')}) | {chart.get('日主强弱','')}")
-    lines.append(f"  喜用: {chart.get('喜用神',[])} | 忌: {chart.get('忌神',[])}")
+    assessment = chart.get("strength_assessment", {})
+    preference = get_resolved_preference(chart)
+    lines.append(
+        f"  日主: {chart.get('日主','')}({chart.get('日主五行','')}) | "
+        f"{assessment.get('旺衰', chart.get('日主强弱',''))}"
+    )
+    lines.append(f"  喜用: {preference['喜用神']} | 忌: {preference['忌神']}")
     lines.append(f"  四柱: {chart.get('四柱',{})}")
     lines.append(f"{'#'*60}")
 
     for y in years:
         a = analyze_single_year(chart, y)
         tags = []
-        if a["该年是喜用神年"]:
-            tags.append("喜用")
-        if a["该年是忌神年"]:
-            tags.append("忌神")
+        if a["该年喜用相关"]:
+            tags.append("喜用相关")
+        if a["该年忌神相关"]:
+            tags.append("忌神相关")
         if a.get("冲"):
             tags.append("冲")
         if a.get("合"):
@@ -298,10 +326,16 @@ def _flow_month_segments(chart: dict, start: date, end: date) -> list[dict]:
 
 def _summary_row(analysis: dict) -> dict:
     tags = []
-    if analysis["该年是喜用神年"]:
-        tags.append("喜用年(吉利)")
-    if analysis["该年是忌神年"]:
-        tags.append("忌神年(不利)")
+    for signal in analysis.get("喜忌信号", {}).get("favorable", []):
+        tags.append(
+            f"喜用信号:{signal['code']}"
+            f"({signal['source']}:{signal['element']})"
+        )
+    for signal in analysis.get("喜忌信号", {}).get("adverse", []):
+        tags.append(
+            f"忌神信号:{signal['code']}"
+            f"({signal['source']}:{signal['element']})"
+        )
     if analysis.get("冲"):
         tags.append(f"冲:{', '.join(analysis['冲'])}")
     if analysis.get("合"):
@@ -314,6 +348,7 @@ def _summary_row(analysis: dict) -> dict:
         "天干十神": analysis["天干十神"],
         "地支藏干十神": analysis["地支藏干十神"],
         "十神集合": analysis["流年十神集合"],
+        "喜忌信号": analysis.get("喜忌信号", {}),
         "标签": tags,
         "大运": du.get("大运干支", ""),
     }
@@ -391,6 +426,7 @@ def integrate_year_analysis(
         for anchor in anchors
     ]
     assessment = chart.get("strength_assessment", {})
+    preference = get_resolved_preference(chart)
     return json.dumps({
         "success": True,
         "chart_id": chart.get("chart_id"),
@@ -405,8 +441,8 @@ def integrate_year_analysis(
         "检测到的年份": sorted({anchor.year for anchor in anchors}),
         "日主": chart.get("日主", ""),
         "日主强弱": assessment.get("旺衰", chart.get("日主强弱", "")),
-        "喜用神": chart.get("喜用神", []),
-        "忌神": chart.get("忌神", []),
+        "喜用神": preference["喜用神"],
+        "忌神": preference["忌神"],
         "年份流年对比": rows,
         "warnings": warnings,
         "component_status": {

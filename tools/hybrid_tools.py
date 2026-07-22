@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from tools.toolkit_base import Toolkit
 from tools.liunian_analyzer import integrate_year_analysis
 from tools.birth_context import BirthContextError
+from tools.chart_assessment import get_resolved_preference
 
 
 class HybridMingliToolkit(Toolkit):
@@ -303,14 +304,24 @@ class HybridMingliToolkit(Toolkit):
         result["_chart"] = chart
 
         if chart:
+            preference = get_resolved_preference(chart)
+            assessment = chart.get("strength_assessment", {})
             result["bazi"] = {
                 "日主": chart.get("日主", ""),
                 "日主五行": chart.get("日主五行", ""),
                 "日主强弱": chart.get("日主强弱", ""),
+                "旺衰": assessment.get("旺衰", chart.get("日主强弱", "")),
+                "legacy_日主强弱": chart.get("legacy_strength", {}).get(
+                    "value", chart.get("日主强弱", "")
+                ),
                 "五行力量": chart.get("五行力量", {}),
                 "十神": chart.get("十神", {}),
-                "喜用神": chart.get("喜用神", []),
-                "忌神": chart.get("忌神", []),
+                "喜用神": preference["喜用神"],
+                "喜神": preference["喜神"],
+                "忌神": preference["忌神"],
+                "喜用神规则版本": preference["ruleset_version"],
+                "legacy_喜用神": chart.get("喜用神", []),
+                "legacy_忌神": chart.get("忌神", []),
                 "空亡": chart.get("空亡", ""),
                 "纳音": chart.get("纳音", ""),
                 "四柱": chart.get("四柱", {}),
@@ -387,7 +398,10 @@ class HybridMingliToolkit(Toolkit):
                 "父母星位置_母亲": mother_positions,
                 "五行力量": wx,
                 "日主强弱": chart.get("日主强弱", ""),
-                "喜用神": chart.get("喜用神", []),
+                "旺衰": chart.get("strength_assessment", {}).get(
+                    "旺衰", chart.get("日主强弱", "")
+                ),
+                "喜用神": preference["喜用神"],
             }
 
         if chart.get("大运精度") != "solar-term":
@@ -446,7 +460,10 @@ class HybridMingliToolkit(Toolkit):
             "confidence": confidence,
             "日主": chart.get("日主", ""),
             "日主强弱": chart.get("日主强弱", ""),
-            "喜用神": chart.get("喜用神", []),
+            "旺衰": chart.get("strength_assessment", {}).get(
+                "旺衰", chart.get("日主强弱", "")
+            ),
+            "喜用神": get_resolved_preference(chart)["喜用神"],
             "strength_assessment": chart.get("strength_assessment"),
             "component_status": status,
         }
@@ -488,18 +505,28 @@ class HybridMingliToolkit(Toolkit):
             return json.dumps({"error": exc.as_dict()}, ensure_ascii=False)
         if not chart:
             return json.dumps({"error": "无法排盘，请检查出生信息"}, ensure_ascii=False)
+        preference = get_resolved_preference(chart)
+        assessment = chart.get("strength_assessment", {})
 
         return json.dumps({
             "四柱": chart.get("四柱", {}),
             "日主": chart.get("日主", ""),
             "日主五行": chart.get("日主五行", ""),
             "日主强弱": chart.get("日主强弱", ""),
-            "strength_assessment": chart.get("strength_assessment", {}),
+            "旺衰": assessment.get("旺衰", chart.get("日主强弱", "")),
+            "legacy_日主强弱": chart.get("legacy_strength", {}).get(
+                "value", chart.get("日主强弱", "")
+            ),
+            "strength_assessment": assessment,
             "legacy_strength": chart.get("legacy_strength", {}),
             "五行力量": chart.get("五行力量", {}),
             "十神": chart.get("十神", {}),
-            "喜用神": chart.get("喜用神", []),
-            "忌神": chart.get("忌神", []),
+            "喜用神": preference["喜用神"],
+            "喜神": preference["喜神"],
+            "忌神": preference["忌神"],
+            "喜用神规则版本": preference["ruleset_version"],
+            "legacy_喜用神": chart.get("喜用神", []),
+            "legacy_忌神": chart.get("忌神", []),
             "空亡": chart.get("空亡", ""),
             "纳音": chart.get("纳音", ""),
             "大运": chart.get("大运", []),

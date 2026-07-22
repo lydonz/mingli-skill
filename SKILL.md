@@ -82,6 +82,16 @@ result = json.loads(toolkit.analyze_question(
 
 具体事件必须传 `analysis_period`。流年以立春边界切分，流月以十二个节气边界切分。仅从问题文本解析年份是降级模式，必须保留其质量提示。
 
+## 规则证据
+
+读取旺衰、喜用和忌神时，只使用 `strength_assessment`：
+
+- `seasonal-strength-v2` 给出月令、五行得分、日主占比、阈值和旺衰结论。
+- `element-balance-v1` 从同一旺衰结论派生喜用神、喜神和忌神。
+- `legacy_strength`、`legacy_preference` 及基础命盘中的旧喜忌字段只供兼容比对，不能用来生成解释。
+
+若 `strength_assessment.conflicts` 非空，依赖旺衰或喜用的模板结论必须降级为待定，并在解释中列出冲突。流年和大运必须读取 `喜忌信号`：`direct_yong`/`direct_ji` 是直接命中，`supports_yong`/`supports_ji` 是生扶关系；两者都只是传统结构信号，不是对吉凶或现实事件的断言。
+
 ## 可选知识引用
 
 仅在需要传统术语、方法论或书目线索时传入 `knowledge_query` 或 `knowledge_packs`。知识检索只读取通过 SHA-256 校验的本地 Markdown，返回包版本、来源、文件、章节和行号；不访问网络，也不参与排盘计算。

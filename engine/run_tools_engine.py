@@ -32,7 +32,11 @@ from tools.tool_integration import (
     PALACE_ORDER,
 )
 from tools.birth_context import normalize_birth_context
-from tools.chart_assessment import attach_strength_assessment
+from tools.chart_assessment import (
+    attach_strength_assessment,
+    classify_preference_signals,
+    get_resolved_preference,
+)
 from tools.safety_policy import assess_rules_suggestion_request
 
 
@@ -257,8 +261,9 @@ def score_tcm_health(chart, option_text):
     """用中医辨证给健康选项打分。"""
     s = 0.0
     wx = chart.get("五行力量", {})
-    yong = chart.get("喜用神", [])
-    ji = chart.get("忌神", [])
+    preference = get_resolved_preference(chart)
+    yong = preference["喜用神"]
+    ji = preference["忌神"]
     
     # Get TCM diagnosis
     diagnoses = diagnose_tcm(wx, yong, ji)
@@ -711,8 +716,9 @@ def eval_year(chart, year, target_month=7, target_day=1):
     day_gan = chart["日主"]
     day_wx = chart["日主五行"]
     strong = _uses_strong_path(chart)
-    yong = chart["喜用神"]
-    ji = chart["忌神"]
+    preference = get_resolved_preference(chart)
+    yong = preference["喜用神"]
+    ji = preference["忌神"]
     pillars = chart["四柱"]
     wx = chart["五行力量"]
     tg = chart["十神"]
@@ -724,12 +730,15 @@ def eval_year(chart, year, target_month=7, target_day=1):
     ln["rel_gan"] = wuxing_relation(day_wx, ln["gan_wx"])
     ln["rel_zhi"] = wuxing_relation(day_wx, ln["zhi_wx"])
 
-    ln["is_yong"] = (ln["gan_wx"] == yong or ln["zhi_wx"] == yong or
-                     WUXING_SHENG.get(ln["gan_wx"]) == yong or
-                     WUXING_SHENG.get(ln["zhi_wx"]) == yong)
-    ln["is_ji"] = (ln["gan_wx"] == ji or ln["zhi_wx"] == ji or
-                   WUXING_SHENG.get(ln["gan_wx"]) == ji or
-                   WUXING_SHENG.get(ln["zhi_wx"]) == ji)
+    ln["preference_signals"] = classify_preference_signals(
+        chart,
+        {
+            "流年天干": ln["gan_wx"],
+            "流年地支": ln["zhi_wx"],
+        },
+    )
+    ln["is_yong"] = ln["preference_signals"]["is_yong_related"]
+    ln["is_ji"] = ln["preference_signals"]["is_ji_related"]
 
     ygz = pillars.get("年柱", "")
     mgz = pillars.get("月柱", "")
@@ -748,10 +757,15 @@ def eval_year(chart, year, target_month=7, target_day=1):
         du["gan_ss"] = shen(day_gan, du["gan"])
         du["zhi_cang"] = ZHI_CANG_GAN.get(du["zhi"], [])
         du["zhi_cang_ss"] = [shen(day_gan, c) for c in du["zhi_cang"]]
-        du["is_yong"] = (du["gan_wx"] == yong or du["zhi_wx"] == yong or
-                         WUXING_SHENG.get(du["gan_wx"]) == yong)
-        du["is_ji"] = (du["gan_wx"] == ji or du["zhi_wx"] == ji or
-                       WUXING_SHENG.get(du["gan_wx"]) == ji)
+        du["preference_signals"] = classify_preference_signals(
+            chart,
+            {
+                "大运天干": du["gan_wx"],
+                "大运地支": du["zhi_wx"],
+            },
+        )
+        du["is_yong"] = du["preference_signals"]["is_yong_related"]
+        du["is_ji"] = du["preference_signals"]["is_ji_related"]
 
     all_ss = set()
     for s in [ln["gan_ss"]] + ln["zhi_cang_ss"]:
@@ -845,8 +859,9 @@ def score_option_v2(opt_text, chart, cat, q_text, year_eval=None):
     day_gan = chart["日主"]
     day_wx = chart["日主五行"]
     strong = _uses_strong_path(chart)
-    yong = chart["喜用神"]
-    ji = chart["忌神"]
+    preference = get_resolved_preference(chart)
+    yong = preference["喜用神"]
+    ji = preference["忌神"]
     wx = chart["五行力量"]
     tg = chart["十神"]
     gender = chart.get("gender", "男")
@@ -1782,8 +1797,9 @@ def _score_chart_level(text, chart, cat, q_year=None, ziwei_data=None):
     strong = _uses_strong_path(chart)
     wx = chart["五行力量"]
     tg = chart["十神"]
-    yong = chart["喜用神"]
-    ji = chart["忌神"]
+    preference = get_resolved_preference(chart)
+    yong = preference["喜用神"]
+    ji = preference["忌神"]
 
     if cat == "性格":
         dp = PERSONALITY_MAP.get(day_gan, {})

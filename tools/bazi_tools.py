@@ -44,8 +44,14 @@ def _with_evidence(chart: dict, payload: dict, signals: dict) -> dict:
     payload["ruleset_version"] = INTERPRETATION_RULESET_VERSION
     payload["chart_id"] = chart.get("chart_id")
     payload["strength_assessment_version"] = assessment["version"]
+    payload["preference_ruleset_version"] = assessment[
+        "preference_ruleset_version"
+    ]
     payload["evidence"] = {
         "signals": signals,
+        "preference": {
+            key: assessment[key] for key in ("喜用神", "喜神", "忌神")
+        },
         "strength_conflicts": assessment.get("conflicts", []),
     }
     payload["component_status"] = {
@@ -88,19 +94,20 @@ def analyze_career_chart(chart: dict) -> dict:
     shi = [key for key, value in ten_gods.items() if value in ("食神", "伤官")]
     cai = [key for key, value in ten_gods.items() if value in ("正财", "偏财")]
     if guan and yin:
-        tendency = "官印相生"
+        candidate_tendency = "官印相生"
     elif shi and cai:
-        tendency = "食伤生财"
+        candidate_tendency = "食伤生财"
     elif sha and yin:
-        tendency = "杀印相生"
+        candidate_tendency = "杀印相生"
     elif (
         cai
         and assessment["旺衰"] == "身旺"
         and not assessment.get("conflicts")
     ):
-        tendency = "身旺任财"
+        candidate_tendency = "身旺任财"
     else:
-        tendency = "待定"
+        candidate_tendency = "待定"
+    has_conflict = bool(assessment.get("conflicts"))
     payload = {
         "success": True,
         "正官": guan,
@@ -110,7 +117,9 @@ def analyze_career_chart(chart: dict) -> dict:
         "食伤": shi,
         "财星": cai,
         "喜用神": assessment["喜用神"],
-        "格局倾向": tendency,
+        "格局倾向": "待定" if has_conflict else candidate_tendency,
+        "候选结构标签": candidate_tendency,
+        "解释状态": "degraded" if has_conflict else "ok",
     }
     return _with_evidence(
         chart,
