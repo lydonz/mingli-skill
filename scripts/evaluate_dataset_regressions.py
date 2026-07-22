@@ -20,6 +20,7 @@ from tools.calendar_engine import (
     ganzhi_from_offset,
     month_ganzhi,
 )
+from tools.ziwei_tools import ZiweiToolkit
 
 
 def read_records(path: Path):
@@ -145,6 +146,184 @@ def evaluate_terminology_coverage(records):
     }
 
 
+def _mingli_bench_records(records):
+    for item in records:
+        record = item.get("record", {})
+        expected = record.get("expected", {})
+        input_data = record.get("input", {})
+        birthday = datetime.fromisoformat(input_data["civil_birth_time"])
+        gender = input_data["gender"]
+        yield item, record, expected, birthday, gender
+
+
+def _bounded_mismatch(mismatches, item, payload):
+    if len(mismatches) < 20:
+        mismatches.append({
+            "record_index": item["record_index"],
+            "case_id": item["record"].get("case_id"),
+            **payload,
+        })
+
+
+def evaluate_mingli_bench_bazi(records):
+    """Compare four pillars without treating event answers as ground truth."""
+    labels = ("year", "month", "day", "hour")
+    component_matches = {label: 0 for label in labels}
+    exact_matches = 0
+    mismatches = []
+    total = 0
+
+    for item, _record, expected, birthday, gender in _mingli_bench_records(records):
+        expected_pillars = expected["four_pillars"]
+        if len(expected_pillars) != 4:
+            raise ValueError("MingLi-Bench fixture must contain four expected pillars")
+        actual_pillars = list(build_four_pillars(
+            birthday.year,
+            birthday.month,
+            birthday.day,
+            birthday.hour,
+            minute=birthday.minute,
+            gender=gender,
+            year_boundary="lichun",
+        )["四柱"].values())
+        total += 1
+        field_mismatches = {}
+        for label, actual, source_value in zip(
+            labels, actual_pillars, expected_pillars
+        ):
+            if actual == source_value:
+                component_matches[label] += 1
+            else:
+                field_mismatches[label] = {
+                    "actual": actual,
+                    "source": source_value,
+                }
+        if not field_mismatches:
+            exact_matches += 1
+        else:
+            _bounded_mismatch(mismatches, item, {
+                "mismatched_pillars": field_mismatches,
+            })
+
+    return {
+        "metric": "mingli_bench_four_pillar_component_match",
+        "total": total,
+        "full_pillar_exact_match": {
+            "matched": exact_matches,
+            "accuracy": exact_matches / total if total else 0,
+        },
+        "pillar_component_matches": {
+            label: {
+                "matched": matched,
+                "total": total,
+                "accuracy": matched / total if total else 0,
+            }
+            for label, matched in component_matches.items()
+        },
+        "mismatches": mismatches,
+        "interpretation": (
+            "This compares the source's precomputed iztro chineseDate field "
+            "with this project's explicit lichun year-boundary convention. "
+            "It does not score MingLi-Bench event answers or establish "
+            "future-event prediction accuracy."
+        ),
+    }
+
+
+def _actual_ziwei_fixture(birthday, gender):
+    result = json.loads(ZiweiToolkit().paipan(
+        birthday.year,
+        birthday.month,
+        birthday.day,
+        birthday.hour,
+        gender,
+    ))
+    backend_status = result.get("后端状态", {})
+    if (
+        not result.get("success")
+        or result.get("排盘引擎") != "iztro"
+        or backend_status.get("status") != "ok"
+    ):
+        raise RuntimeError(
+            "MingLi-Bench Ziwei regression requires the healthy iztro backend: "
+            f"{result.get('error') or backend_status}"
+        )
+    palaces = result["十二宫"]
+    body_palace = result["身宫"]
+    return {
+        "lunar_date": result["农历日期"],
+        "soul_palace_branch": result["命宫"]["地支"],
+        "body_palace_branch": palaces[body_palace]["宫位地支"],
+        "five_elements_class": result["五行局"],
+        "zodiac": result["生肖"],
+        "palaces": {
+            name: {
+                "earthly_branch": palace["宫位地支"],
+                "major_stars": palace["主星"],
+                "minor_stars": palace["辅星"],
+            }
+            for name, palace in palaces.items()
+        },
+    }
+
+
+def evaluate_mingli_bench_ziwei(records):
+    """Compare deterministic Ziwei structures against the bundled iztro output."""
+    fields = (
+        "lunar_date",
+        "soul_palace_branch",
+        "body_palace_branch",
+        "five_elements_class",
+        "zodiac",
+        "palaces",
+    )
+    field_matches = {field: 0 for field in fields}
+    exact_matches = 0
+    mismatches = []
+    total = 0
+
+    for item, _record, expected, birthday, gender in _mingli_bench_records(records):
+        expected_ziwei = expected["ziwei"]
+        actual_ziwei = _actual_ziwei_fixture(birthday, gender)
+        total += 1
+        failed_fields = [
+            field for field in fields
+            if actual_ziwei[field] != expected_ziwei[field]
+        ]
+        for field in fields:
+            if field not in failed_fields:
+                field_matches[field] += 1
+        if not failed_fields:
+            exact_matches += 1
+        else:
+            _bounded_mismatch(mismatches, item, {
+                "failed_fields": failed_fields,
+            })
+
+    return {
+        "metric": "mingli_bench_ziwei_structure_exact_match",
+        "total": total,
+        "full_chart_exact_match": {
+            "matched": exact_matches,
+            "accuracy": exact_matches / total if total else 0,
+        },
+        "field_matches": {
+            field: {
+                "matched": matched,
+                "total": total,
+                "accuracy": matched / total if total else 0,
+            }
+            for field, matched in field_matches.items()
+        },
+        "mismatches": mismatches,
+        "interpretation": (
+            "This compares deterministic iztro chart fields only. It does not "
+            "score MingLi-Bench event answers or establish future-event "
+            "prediction accuracy."
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-id", required=True)
@@ -159,7 +338,16 @@ def main() -> int:
     if any(record["source_id"] != source["id"] for record in records):
         raise ValueError("records file source_id does not match --source-id")
 
-    if args.purpose == "bazi_chart_regression":
+    if args.source_id == "mingli-bench":
+        if args.purpose == "bazi_chart_regression":
+            report = evaluate_mingli_bench_bazi(records)
+        elif args.purpose == "ziwei_chart_regression":
+            report = evaluate_mingli_bench_ziwei(records)
+        else:
+            raise ValueError(
+                "MingLi-Bench event-answer scoring is intentionally unsupported"
+            )
+    elif args.purpose == "bazi_chart_regression":
         report = evaluate_calculation(records)
     elif args.purpose == "terminology_coverage":
         report = evaluate_terminology_coverage(records)

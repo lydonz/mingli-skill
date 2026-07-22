@@ -223,6 +223,35 @@ report = json.loads(toolkit.generate_html_report(
 
 `rules_suggestion` 只处理低风险多选题兼容场景。未提供选项会返回 `rules_suggestion_no_options`；健康、伤害、法律，以及死亡、医疗、投资、借贷、赌博、破产、怀孕或离婚等内容会返回可见的抑制状态，不能据此生成选项预测。
 
+## 外部排盘回归
+
+项目登记了 [DestinyLinker/MingLi-Bench](https://github.com/DestinyLinker/MingLi-Bench)
+的 MIT 许可固定提交 `b7433280fd86d7a7c27debbc47d0303c218f0bfd`。导入器只读取其中 32 份预先由 `iztro` 生成的命盘结构，用于四柱和紫微的可重复回归；不会导入或评分其 160 道历史事件题的题干、选项与答案。
+
+```bash
+git clone https://github.com/DestinyLinker/MingLi-Bench.git /tmp/MingLi-Bench
+git -C /tmp/MingLi-Bench checkout b7433280fd86d7a7c27debbc47d0303c218f0bfd
+
+python3 scripts/import_mingli_bench.py \
+  --source-dir /tmp/MingLi-Bench \
+  --output-dir /tmp/mingli-bench-validation \
+  --purpose bazi_chart_regression
+
+python3 scripts/evaluate_dataset_regressions.py \
+  --source-id mingli-bench \
+  --records /tmp/mingli-bench-validation/chart-fixtures.jsonl \
+  --purpose bazi_chart_regression \
+  --output /tmp/mingli-bench-validation/bazi-report.json
+
+python3 scripts/evaluate_dataset_regressions.py \
+  --source-id mingli-bench \
+  --records /tmp/mingli-bench-validation/chart-fixtures.jsonl \
+  --purpose ziwei_chart_regression \
+  --output /tmp/mingli-bench-validation/ziwei-report.json
+```
+
+在上述固定提交和当前依赖版本下：紫微的农历日期、命身宫、五行局、生肖与十二宫主辅星结构为 32/32 一致；四柱的月、日、时柱为 32/32 一致，年柱为 31/32 一致。唯一差异发生在立春后、农历新年前：本项目遵循显式的立春换年规则，而上游 `iztro` 的 `chineseDate` 年柱仍使用农历年。紫微对照的双方都依赖 `iztro`，因此它验证的是适配层和输出结构没有漂移，并非独立的天文历法验证。该报告仅说明排盘字段的一致或差异，不构成对事业、财运、健康或其他事件的预测能力结论。
+
 ## 工具包
 
 | 工具包 | 主要能力 |

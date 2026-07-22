@@ -21,18 +21,20 @@
       "revision": "b7433280fd86d7a7c27debbc47d0303c218f0bfd",
       "license": "MIT",
       "evidence_level": "external_benchmark",
-      "data_kind": "chart_fixture_and_multiple_choice_benchmark",
+      "data_kind": "iztro_chart_fixture_and_event_question_corpus",
       "allowed_uses": [
         "bazi_chart_regression",
         "ziwei_chart_regression",
-        "multiple_choice_benchmark"
+        "event_question_quality_audit"
       ],
       "prohibited_uses": [
         "event_prediction_training",
         "event_prediction_accuracy_claim",
-        "real_world_outcome_claim"
+        "real_world_outcome_claim",
+        "event_answer_scoring",
+        "career_or_wealth_inference"
       ],
-      "notes": "Reference chart fixtures use iztro output. The benchmark measures agreement on its questions, not verification of future events."
+      "notes": "Only the 32 precomputed iztro chart fixtures are used for deterministic regression. The 160 multiple-choice questions describe historical events; their texts, options, and answer keys are excluded from import and scoring."
     },
     {
       "id": "czuo03-bazi-calculate-rlvr",
