@@ -1,6 +1,8 @@
 # MingLi Skill
 
-面向 LLM Agent 的中文命理工具集。项目提供八字、紫微斗数、流年与大运等排盘能力，以及可供 Agent 使用的结构化数据、规则证据和数据质量状态。
+面向普通用户命理服务产品和 LLM Agent 集成场景的可审计中文命理工具集。项目提供八字、紫微斗数、流年、大运与流月等排盘能力，以及可供应用或 Agent 使用的结构化数据、规则证据和数据质量状态。
+
+当前稳定版本为 **v2.0.0**。这是一次不保留长期兼容性的重大升级；旧接口、紫微近似回退和历史事件选择题预测等变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 本项目参考 [dfytensor/MingLiSkill](https://github.com/dfytensor/MingLiSkill) 的项目结构与命理工具设计。
 本项目内置的可选本地知识包参考
@@ -20,11 +22,24 @@
 - **流年区间分析**：支持年、月、日粒度的 `analysis_period`；结果按所选年界规则切分民用日期与干支流年。
 - **流月分段**：按小寒、立春、惊蛰等十二个节气输出流月干支、十神和当期大运。
 - **可审计输出**：每份综合结果包含 `chart_id`、`birth_time`、`strength_assessment`、规则证据与各组件状态。
-- **高风险门控**：规则选项建议只用于低风险多选兼容场景；健康、伤害、法律，以及死亡、医疗、投资、借贷等主题会显示抑制状态，而不生成选项预测。
+- **历史预测退役与高风险门控**：系统不再自动回答历史事件选择题；健康、伤害、法律，以及死亡、医疗、投资、借贷等主题会显示抑制状态。
 - **本地知识引用**：可选检索经 SHA-256 校验的本地 Markdown 知识包，返回固定版本、文件、章节、行号和摘录；不访问网络。
 - **HTML 报告**：可生成单文件、无外链、适合浏览器阅读和打印的报告；只有显式指定路径时才写入本地文件。
 - **解读文本契约**：可选解释文本必须绑定当前 `chart_id`、引用结构化 `evidence_ids` 并说明不确定性；报告将其作为纯文本安全转义。
-- **其他工具包**：六爻、梅花易数、奇门遁甲、大六壬、面相手相和风水基础工具。
+- **扩展工具包**：六爻和梅花易数提供结构化文化参考；奇门、大六壬、面相手相和风水能力按各自验证状态限制或停用。
+
+## v2.0.0 升级说明
+
+升级到 2.0.0 的调用方应重点检查：
+
+- Python 最低版本提高到 3.11，Node.js 最低版本为 20。
+- `ComputedChart`、`chart_id` 和统一时间语义成为八字、紫微、大运、流年与流月的共享基础。
+- `year_boundary` 和 `zi_hour_convention` 会影响命盘标识及相关计算，调用方不应只在单个模块中切换。
+- 紫微精确后端不可用时返回结构化失败，不再生成近似盘。
+- 历史事件选择题预测已经退役；传入低风险选项也不会自动选择答案。
+- 输出增加证据、不确定性、规则版本和组件状态字段，旧调用方应按新结构适配。
+
+完整变更及固定依赖版本见 [CHANGELOG.md](CHANGELOG.md)，隐私和高风险使用边界见 [ETHICS.md](ETHICS.md)。
 
 ## 历法与数据质量
 
@@ -60,9 +75,18 @@
 
 依赖 Python 3.11+、Node.js 20+ 和 npm。
 
+正式安装当前项目：
+
+```bash
+python3 -m pip install .
+npm ci
+```
+
+参与开发或运行回归脚本时，也可以直接安装锁定依赖：
+
 ```bash
 python3 -m pip install -r requirements.txt
-npm install
+npm ci
 ```
 
 Python 依赖：
@@ -103,6 +127,34 @@ setup.bat
 调用 `HybridMingliToolkit.analyze_question()` 时，提供出生年月日、时分、性别、分析类别、问题和 `options_json`。出生资料应由调用方在运行时传入；项目文档和示例不保存任何个人出生信息。
 
 该兼容调用会按标准时间排盘，并在 `data_quality_warnings` 中说明没有地点校正。
+
+```python
+import json
+
+from tools import HybridMingliToolkit
+
+toolkit = HybridMingliToolkit()
+result = json.loads(toolkit.analyze_question(
+    year=1990,
+    month=6,
+    day=15,
+    hour=0,
+    minute=0,
+    gender="男",
+    category="事业",
+    question="未来一年的事业节奏如何？",
+    options_json="[]",
+))
+
+if "error" in result:
+    raise RuntimeError(result["error"])
+
+print("命盘标识：", result["chart_id"])
+print("四柱：", result["bazi"]["四柱"])
+print("数据质量提示：", result["data_quality_warnings"])
+```
+
+生产环境建议提供出生地点、时区和时间误差范围，避免将上述无地点兼容模式当作完整校时结果。
 
 ### 真太阳时与具体日期分析
 
@@ -273,18 +325,18 @@ python3 scripts/evaluate_dataset_regressions.py \
 
 ## 工具包
 
-| 工具包 | 主要能力 |
-|---|---|
-| `HybridMingliToolkit` | 综合排盘、流年、结构化证据和组件状态。 |
-| `BaziToolkit` | 八字、四柱、大运、流年、十神、冲合、财官印食伤分析；个人排盘入口支持 `birth_context` 并构建 `ComputedChart`。 |
-| `ZiweiToolkit` | 紫微十二宫、命宫、官禄、财帛、夫妻和疾厄分析；个人排盘入口支持 `birth_context` 并消费 `ComputedChart`。 |
-| `LiuYaoToolkit` | 六爻起卦。 |
-| `MeiHuaToolkit` | 梅花易数。 |
-| `QiMenToolkit` | 奇门遁甲。 |
-| `LiuRenToolkit` | 大六壬。 |
-| `KnowledgeToolkit` | 列出和检索本地、版本固定且经过完整性校验的知识包。 |
-| `PhysiognomyToolkit` | 面相手相基础查询。 |
-| `FengShuiToolkit` | 八宅等风水基础工具。 |
+| 工具包 | 状态 | 主要能力与边界 |
+|---|---|---|
+| `HybridMingliToolkit` | 正式可用 | 综合排盘、流年流月、结构化证据和组件状态。 |
+| `BaziToolkit` | 正式可用 | 八字、四柱、大运、流年、十神和结构化分析；个人排盘入口支持 `birth_context` 并构建 `ComputedChart`。 |
+| `ZiweiToolkit` | 正式可用 | 基于 `iztro` 的紫微十二宫与审计数据；精确后端不可用时明确失败。 |
+| `LiuYaoToolkit` | 结构化参考 | 支持保留原始摇币数据和种子复现；高风险问题会被抑制。 |
+| `MeiHuaToolkit` | 结构化参考 | 提供起卦和体用结构，不作为现实事件保证。 |
+| `QiMenToolkit` | 实验功能已停用 | 返回 `experimental_disabled`，当前不生成奇门盘。 |
+| `LiuRenToolkit` | 实验功能已停用 | 返回 `experimental_disabled`，当前不生成大六壬盘。 |
+| `KnowledgeToolkit` | 正式可用 | 列出和检索本地、版本固定且经过完整性校验的知识包。 |
+| `PhysiognomyToolkit` | 仅文化资料 | 返回 `cultural_reference_only`，不根据外貌推断健康、性格或命运。 |
+| `FengShuiToolkit` | 部分可用 | 八宅表待验证；其他接口仅提供文化资料或一般环境建议。 |
 
 所有公开工具类可从 `tools` 导入：
 
@@ -298,6 +350,8 @@ from tools import ALL_TOOLKITS, BaziToolkit, HybridMingliToolkit, ZiweiToolkit
 mingli-skill/
 ├── SKILL.md                 # Agent 使用说明和命理推理规则
 ├── ETHICS.md                # 使用边界、隐私与高风险事项说明
+├── CHANGELOG.md             # 版本变更和破坏性升级说明
+├── pyproject.toml           # Python 包、依赖和工具配置
 ├── docs/methodology.md      # 分析层次、流月和报告输出约定
 ├── agents/openai.yaml       # Agent 展示与默认调用元数据
 ├── setup.sh / setup.bat     # Skill 安装脚本
@@ -322,7 +376,7 @@ mingli-skill/
 
 ## 测试
 
-运行全部回归测试：
+v2.0.0 发布基线包含 75 项测试。运行全部回归测试：
 
 ```bash
 python3 -m unittest discover -v
