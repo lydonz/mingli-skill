@@ -45,12 +45,21 @@ class ToolkitSmokeTests(unittest.TestCase):
             ),
         )
         assert_success(self, MeiHuaToolkit().cast_meihua(1, 2, 2026, 7, 20))
-        assert_success(self, QiMenToolkit().build_qimen_pan(2026, 7, 20, 12))
-        assert_success(self, LiuRenToolkit().build_liuren_pan(2026, 7, 20, 12))
+        qimen = json.loads(QiMenToolkit().build_qimen_pan(2026, 7, 20, 12))
+        self.assertFalse(qimen["success"])
+        self.assertEqual(qimen["capability_status"], "experimental_disabled")
+        liuren = json.loads(LiuRenToolkit().build_liuren_pan(2026, 7, 20, 12))
+        self.assertFalse(liuren["success"])
+        self.assertEqual(liuren["capability_status"], "experimental_disabled")
 
     def test_reference_toolkits(self):
         assert_success(self, PhysiognomyToolkit().face_twelve_palaces("命宫"))
-        assert_success(self, FengShuiToolkit().bazhai_minggua(1990, "女"))
+        bazhai = json.loads(FengShuiToolkit().bazhai_minggua(1990, "女"))
+        self.assertFalse(bazhai["success"])
+        self.assertEqual(
+            bazhai["capability_status"],
+            "disabled_pending_table_verification",
+        )
 
 
 if __name__ == "__main__":

@@ -10,13 +10,26 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
 from tools.toolkit_base import Toolkit
 
 
 KNOWLEDGE_PACK_SCHEMA = "knowledge-pack-v1"
-PACKS_ROOT = Path(__file__).resolve().parents[1] / "knowledge_packs"
+
+
+def _default_packs_root() -> Path:
+    source_root = Path(__file__).resolve().parents[1]
+    candidates = (
+        source_root / "knowledge_packs",
+        source_root / "share" / "mingli-skill" / "knowledge_packs",
+        Path(sys.prefix) / "share" / "mingli-skill" / "knowledge_packs",
+    )
+    return next((candidate for candidate in candidates if candidate.exists()), candidates[0])
+
+
+PACKS_ROOT = _default_packs_root()
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _WORD_RE = re.compile(r"[a-zA-Z0-9_+-]{2,}")
 _CJK_RE = re.compile(r"[\u3400-\u9fff]+")

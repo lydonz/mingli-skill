@@ -78,7 +78,7 @@ result = json.loads(toolkit.analyze_question(
 2. **结构层**：`strength_assessment`、十神、五行、`ziwei_raw`。
 3. **解释层**：`career_analysis`、`wealth_analysis`、`marriage_analysis` 等传统文化推演。
 
-`ziwei_raw` 包含十二宫、星曜亮度、生年四化、十年大限及 `紫微审计`；`ziwei` 只是兼容摘要。紫微精确后端不可用时，`component_status.ziwei` 会标记为 `degraded`，近似盘不能作为完整紫微规则或回归依据。
+`ziwei_raw` 包含十二宫、星曜亮度、生年四化、十年大限及 `紫微审计`；`ziwei` 只是兼容摘要。紫微精确后端不可用时，`component_status.ziwei` 会标记为 `degraded`，并返回结构化失败；正式入口不会生成近似盘。
 
 ## 流年与流月
 
@@ -122,7 +122,7 @@ interpretation_document = {
 
 ## 规则建议
 
-`rules_suggestion` 只服务于低风险的多选题兼容场景。没有选项时它会返回 `rules_suggestion_no_options`，不会随机选择答案。健康、伤害、法律，以及涉及死亡、医疗、投资、借贷、赌博、破产、怀孕或离婚等高风险内容时会被明确抑制，不生成规则选项预测。
+历史选择题预测已经停用。没有选项时 `rules_suggestion` 返回 `rules_suggestion_no_options`；有低风险选项时返回 `rules_suggestion_retired`；高风险内容仍返回明确抑制状态。任何路径都不会自动选择答案。
 
 ## 报告
 

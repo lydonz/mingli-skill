@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mingli-skill"
+version = "2.0.0"
+description = "Auditable calendar and traditional MingLi chart toolkit"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "lunar-python==1.4.8",
+  "pyarrow==21.0.0",
+  "geonamescache==2.0.0",
+  "pypinyin==0.55.0",
+]
+
+[tool.setuptools]
+packages = ["engine", "scripts", "tools"]
+
+[tool.setuptools.package-data]
+tools = ["iztro_bridge.js"]
+
+[tool.setuptools.data-files]
+"share/mingli-skill/knowledge_packs/bazi-ziwei-mingli-cn" = [
+  "knowledge_packs/bazi-ziwei-mingli-cn/LICENSE",
+  "knowledge_packs/bazi-ziwei-mingli-cn/UPSTREAM.md",
+  "knowledge_packs/bazi-ziwei-mingli-cn/manifest.json",
+]
+"share/mingli-skill/knowledge_packs/bazi-ziwei-mingli-cn/core" = [
+  "knowledge_packs/bazi-ziwei-mingli-cn/core/epistemology.md",
+  "knowledge_packs/bazi-ziwei-mingli-cn/core/methodology.md",
+  "knowledge_packs/bazi-ziwei-mingli-cn/core/工具书索引.md",
+  "knowledge_packs/bazi-ziwei-mingli-cn/core/紫微斗数概要.md",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = ["node_modules", "datasets/cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+include = ["engine", "scripts", "tools", "tests"]
+exclude = ["node_modules", "datasets/cache"]

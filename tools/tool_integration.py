@@ -232,32 +232,28 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
         data["zw_ju"] = ziwei.get("五行局", "")
         backend_status = ziwei.get("后端状态", {})
         ziwei_status = backend_status.get("status", "ok")
-        data["zw_precision"] = (
-            "iztro"
-            if ziwei_status == "ok" and ziwei.get("排盘引擎") == "iztro"
-            else "approximate"
-        )
+        data["zw_precision"] = "iztro"
         data["component_status"]["ziwei"] = {
             "status": ziwei_status,
             "backend": ziwei.get("排盘引擎", "unknown"),
             "input_precision": "hour",
             "zi_hour_convention": zi_hour_convention,
         }
-        if ziwei_status != "ok":
-            data["component_status"]["ziwei"].update({
-                "code": backend_status.get(
-                    "code", "ziwei_approximate_fallback"
-                ),
-                "message": backend_status.get(
-                    "message", "紫微后端已降级为近似盘。"
-                ),
-                "fallback": backend_status.get("fallback"),
-            })
     else:
+        backend_status = ziwei.get("后端状态", {})
+        data["ziwei_status"] = ziwei
+        data["zw_precision"] = "unavailable"
         data["component_status"]["ziwei"] = {
-            "status": "error",
-            "code": "ziwei_unavailable",
+            "status": backend_status.get("status", "error"),
+            "code": backend_status.get(
+                "code",
+                ziwei.get("capability_status", "ziwei_unavailable"),
+            ),
+            "backend": "iztro",
+            "input_precision": "hour",
+            "zi_hour_convention": zi_hour_convention,
             "message": ziwei.get("error", "紫微排盘未返回成功结果。"),
+            "fallback_used": False,
         }
 
     analyzers = {

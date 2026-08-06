@@ -104,17 +104,16 @@ class RuntimeSafetyTests(unittest.TestCase):
         self.assertNotIn("需调理", json.dumps(health, ensure_ascii=False))
         self.assertIn("不构成健康评估", health["医疗声明"])
 
-    def test_ziwei_backend_fallback_is_degraded_and_visible(self):
+    def test_ziwei_backend_failure_is_degraded_and_visible(self):
         with mock.patch("tools.ziwei_tools.shutil.which", return_value=None):
             result = self._analyze()
 
         status = result["component_status"]["ziwei"]
         self.assertEqual(status["status"], "degraded")
         self.assertEqual(status["code"], "ziwei_node_runtime_missing")
-        self.assertEqual(
-            result["ziwei_raw"]["排盘引擎"],
-            "approximate-fallback",
-        )
+        self.assertFalse(result["ziwei_raw"]["success"])
+        self.assertEqual(result["ziwei_raw"]["排盘引擎"], "iztro")
+        self.assertFalse(result["ziwei_raw"]["fallback_used"])
 
     def test_ziwei_precision_is_available_only_for_exact_backend(self):
         chart = compute_chart({
@@ -129,7 +128,22 @@ class RuntimeSafetyTests(unittest.TestCase):
 
         with mock.patch("tools.ziwei_tools.shutil.which", return_value=None):
             fallback = build_tool_data(1990, 6, 15, 12, "女", chart=chart)
-        self.assertEqual(fallback["zw_precision"], "approximate")
+        self.assertEqual(fallback["zw_precision"], "unavailable")
+
+    def test_low_risk_multiple_choice_predictor_is_retired(self):
+        result = self._analyze(
+            question="哪个职业更适合？",
+            options_json=(
+                '[{"letter":"A","text":"技术"},'
+                '{"letter":"B","text":"行政"}]'
+            ),
+        )
+
+        self.assertIsNone(result["rules_suggestion"]["suggested_answer"])
+        self.assertEqual(
+            result["component_status"]["rules_suggestion"]["code"],
+            "rules_suggestion_retired",
+        )
 
     def test_solar_term_date_does_not_silently_use_rough_fallback(self):
         _solar_term_cache.clear()

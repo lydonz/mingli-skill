@@ -3,32 +3,78 @@ from __future__ import annotations
 import json
 import math
 import random
-from datetime import datetime, date
 from typing import Dict, List, Optional, Tuple
 
 from .toolkit_base import Toolkit
 
 from .calendar_engine import (
-    TIANGAN, DIZHI, TIANGAN_IDX, DIZHI_IDX,
-    WUXING_GAN, WUXING_ZHI, year_ganzhi, day_ganzhi_from_date,
-    BAGUA, HEXAGRAMS, LIUYAO_LIUQIN, LIUYAO_LIUSHEN,
+    TIANGAN, DIZHI, WUXING_ZHI,
+    BAGUA, HEXAGRAMS, LIUYAO_LIUSHEN,
 )
 
+# 爻序统一按“初爻在前、上爻在后”（自下而上）。
 TRIGRAM_LINES = {
-    "乾": [1, 1, 1], "兑": [1, 1, 0], "离": [1, 0, 1], "震": [0, 0, 1],
-    "巽": [1, 1, 0], "坎": [0, 1, 0], "艮": [1, 0, 0], "坤": [0, 0, 0],
+    "乾": [1, 1, 1], "兑": [1, 1, 0], "离": [1, 0, 1], "震": [1, 0, 0],
+    "巽": [0, 1, 1], "坎": [0, 1, 0], "艮": [0, 0, 1], "坤": [0, 0, 0],
+}
+
+HEXAGRAM_BY_TRIGRAMS = {
+    ("乾", "乾"): (1, "乾"), ("坤", "坤"): (2, "坤"),
+    ("坎", "震"): (3, "屯"), ("艮", "坎"): (4, "蒙"),
+    ("坎", "乾"): (5, "需"), ("乾", "坎"): (6, "讼"),
+    ("坤", "坎"): (7, "师"), ("坎", "坤"): (8, "比"),
+    ("巽", "乾"): (9, "小畜"), ("乾", "兑"): (10, "履"),
+    ("坤", "乾"): (11, "泰"), ("乾", "坤"): (12, "否"),
+    ("乾", "离"): (13, "同人"), ("离", "乾"): (14, "大有"),
+    ("坤", "艮"): (15, "谦"), ("震", "坤"): (16, "豫"),
+    ("兑", "震"): (17, "随"), ("艮", "巽"): (18, "蛊"),
+    ("坤", "兑"): (19, "临"), ("巽", "坤"): (20, "观"),
+    ("离", "震"): (21, "噬嗑"), ("艮", "离"): (22, "贲"),
+    ("艮", "坤"): (23, "剥"), ("坤", "震"): (24, "复"),
+    ("乾", "震"): (25, "无妄"), ("艮", "乾"): (26, "大畜"),
+    ("艮", "震"): (27, "颐"), ("兑", "巽"): (28, "大过"),
+    ("坎", "坎"): (29, "坎"), ("离", "离"): (30, "离"),
+    ("兑", "艮"): (31, "咸"), ("震", "巽"): (32, "恒"),
+    ("乾", "艮"): (33, "遯"), ("震", "乾"): (34, "大壮"),
+    ("离", "坤"): (35, "晋"), ("坤", "离"): (36, "明夷"),
+    ("巽", "离"): (37, "家人"), ("离", "兑"): (38, "睽"),
+    ("坎", "艮"): (39, "蹇"), ("震", "坎"): (40, "解"),
+    ("艮", "兑"): (41, "损"), ("巽", "震"): (42, "益"),
+    ("兑", "乾"): (43, "夬"), ("乾", "巽"): (44, "姤"),
+    ("兑", "坤"): (45, "萃"), ("坤", "巽"): (46, "升"),
+    ("兑", "坎"): (47, "困"), ("坎", "巽"): (48, "井"),
+    ("兑", "离"): (49, "革"), ("离", "巽"): (50, "鼎"),
+    ("震", "震"): (51, "震"), ("艮", "艮"): (52, "艮"),
+    ("巽", "艮"): (53, "渐"), ("震", "兑"): (54, "归妹"),
+    ("震", "离"): (55, "丰"), ("离", "艮"): (56, "旅"),
+    ("巽", "巽"): (57, "巽"), ("兑", "兑"): (58, "兑"),
+    ("巽", "坎"): (59, "涣"), ("坎", "兑"): (60, "节"),
+    ("巽", "兑"): (61, "中孚"), ("震", "艮"): (62, "小过"),
+    ("坎", "离"): (63, "既济"), ("离", "坎"): (64, "未济"),
+}
+
+LIUYAO_PALACES = {
+    "乾": ("乾", "姤", "遯", "否", "观", "剥", "晋", "大有"),
+    "坤": ("坤", "复", "临", "泰", "大壮", "夬", "需", "比"),
+    "震": ("震", "豫", "解", "恒", "升", "井", "大过", "随"),
+    "巽": ("巽", "小畜", "家人", "益", "无妄", "噬嗑", "颐", "蛊"),
+    "坎": ("坎", "节", "屯", "既济", "革", "丰", "明夷", "师"),
+    "离": ("离", "旅", "鼎", "未济", "蒙", "涣", "讼", "同人"),
+    "艮": ("艮", "贲", "大畜", "损", "睽", "履", "中孚", "渐"),
+    "兑": ("兑", "困", "萃", "咸", "蹇", "谦", "小过", "归妹"),
 }
 
 YAO_SYMBOL = {0: "⚋", 1: "⚊", 2: "⚏"}
 
+# 每个数组均按初、二、三、四、五、上爻顺序。
 LIUYAO_NAJIA_GAN = {
-    "乾": ["壬", "壬", "壬", "壬", "甲", "甲"],
+    "乾": ["甲", "甲", "甲", "壬", "壬", "壬"],
     "坎": ["戊", "戊", "戊", "戊", "戊", "戊"],
     "艮": ["丙", "丙", "丙", "丙", "丙", "丙"],
     "震": ["庚", "庚", "庚", "庚", "庚", "庚"],
     "巽": ["辛", "辛", "辛", "辛", "辛", "辛"],
     "离": ["己", "己", "己", "己", "己", "己"],
-    "坤": ["乙", "乙", "乙", "乙", "癸", "癸"],
+    "坤": ["乙", "乙", "乙", "癸", "癸", "癸"],
     "兑": ["丁", "丁", "丁", "丁", "丁", "丁"],
 }
 
@@ -43,20 +89,10 @@ LIUYAO_NAJIA_ZHI = {
     "兑": ["巳", "卯", "丑", "亥", "酉", "未"],
 }
 
-LIUYAO_LIUQIN_ORDER = ["父母", "兄弟", "子孙", "妻财", "官鬼"]
-
-QIMEN_JIUXING = [
-    "天蓬", "天芮", "天冲", "天辅", "天禽", "天心", "天柱", "天任", "天英",
-]
-QIMEN_BAMEN = ["休门", "生门", "伤门", "杜门", "景门", "死门", "惊门", "开门"]
-QIMEN_BASHEN = ["值符", "螣蛇", "太阴", "六合", "白虎", "玄武", "九地", "九天"]
-QIMEN_JIUGONG = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-QIMEN_GONG_POSITIONS = {
-    1: (0, 2), 2: (0, 1), 3: (0, 0),
-    4: (1, 2), 5: (1, 1), 6: (1, 0),
-    7: (2, 2), 8: (2, 1), 9: (2, 0),
+LIUSHEN_START_BY_DAY_GAN = {
+    "甲": 0, "乙": 0, "丙": 1, "丁": 1, "戊": 2,
+    "己": 3, "庚": 4, "辛": 4, "壬": 5, "癸": 5,
 }
-
 
 class LiuYaoToolkit(Toolkit):
     def __init__(self, **kwargs):
@@ -70,17 +106,30 @@ class LiuYaoToolkit(Toolkit):
         ]
         super().__init__(name="liuyao_tools", tools=tools, **kwargs)
 
-    def cast_hexagram(self, method: str = "三硬币法", coins: str = "") -> str:
+    def cast_hexagram(
+        self,
+        method: str = "三硬币法",
+        coins: str = "",
+        random_seed: int | None = None,
+    ) -> str:
         """
         起六爻卦：使用三硬币法或数字法起出一个六爻卦象。
 
         Args:
             method: 起卦方法 ("三硬币法" 或 "数字法")
             coins: 六次摇币结果，每次三个数字用逗号分隔，六次用分号分隔。
-                   数字含义：2=字(阳) 3=背(阴)。如 "2,2,3;1,2,3;2,3,3;2,2,2;1,3,3;2,2,3"
-                   留空则自动随机生成。
+                   数字仅作为硬币两面记号：2和3。每组三数相加后按6=老阴、7=少阳、8=少阴、9=老阳解释。
+                   如 "2,2,3;2,2,3;2,3,3;2,2,2;3,3,3;2,2,3"。留空则自动随机生成。
         """
         try:
+            if method != "三硬币法":
+                return json.dumps({
+                    "success": False,
+                    "capability_status": "unsupported_method",
+                    "error": "当前仅实现三硬币法。",
+                }, ensure_ascii=False)
+            generated_randomly = not coins.strip()
+            coin_groups = []
             if coins.strip():
                 groups = coins.split(";")
                 if len(groups) != 6:
@@ -88,31 +137,53 @@ class LiuYaoToolkit(Toolkit):
                 yao_values = []
                 for g in groups:
                     nums = [int(x.strip()) for x in g.split(",")]
+                    if len(nums) != 3 or any(value not in (2, 3) for value in nums):
+                        return json.dumps({
+                            "success": False,
+                            "error": "每组必须恰好包含3个数字，且只能使用2或3",
+                        }, ensure_ascii=False)
                     total = sum(nums)
+                    coin_groups.append(nums)
                     yao_values.append(total)
             else:
                 yao_values = []
+                generator = (
+                    random.Random(random_seed)
+                    if random_seed is not None
+                    else random.SystemRandom()
+                )
                 for _ in range(6):
-                    coins_list = [random.choice([2, 3]) for _ in range(3)]
+                    coins_list = [generator.choice([2, 3]) for _ in range(3)]
+                    coin_groups.append(coins_list)
                     yao_values.append(sum(coins_list))
 
             yaos = []
+            yao_types = {
+                6: ("阴", True, "老阴"),
+                7: ("阳", False, "少阳"),
+                8: ("阴", False, "少阴"),
+                9: ("阳", True, "老阳"),
+            }
             for val in yao_values:
-                if val % 2 == 0:
-                    yao_type = "阳"
-                    is_changing = (val == 6)
-                else:
-                    yao_type = "阴"
-                    is_changing = (val == 9)
-                yaos.append({"value": val, "type": yao_type, "changing": is_changing})
+                if val not in yao_types:
+                    return json.dumps({
+                        "success": False,
+                        "error": f"无效爻值{val}，三硬币法只能得到6、7、8、9",
+                    }, ensure_ascii=False)
+                yao_type, is_changing, traditional_name = yao_types[val]
+                yaos.append({
+                    "value": val,
+                    "type": yao_type,
+                    "traditional_name": traditional_name,
+                    "changing": is_changing,
+                })
 
             lower = [1 if y["type"] == "阳" else 0 for y in yaos[:3]]
             upper = [1 if y["type"] == "阳" else 0 for y in yaos[3:]]
             lower_gua = self._match_trigram(lower)
             upper_gua = self._match_trigram(upper)
 
-            hex_num = self._trigrams_to_hexagram(upper_gua, lower_gua)
-            hex_name = HEXAGRAMS.get(hex_num, f"第{hex_num}卦")
+            hex_num, hex_name = HEXAGRAM_BY_TRIGRAMS[(upper_gua, lower_gua)]
 
             changed_yaos = [i for i, y in enumerate(yaos) if y["changing"]]
             if changed_yaos:
@@ -125,14 +196,32 @@ class LiuYaoToolkit(Toolkit):
                         changed_upper[idx - 3] = 1 - changed_upper[idx - 3]
                 changed_lower_gua = self._match_trigram(changed_lower)
                 changed_upper_gua = self._match_trigram(changed_upper)
-                changed_hex_num = self._trigrams_to_hexagram(changed_upper_gua, changed_lower_gua)
-                changed_hex_name = HEXAGRAMS.get(changed_hex_num, f"第{changed_hex_num}卦")
+                changed_hex_num, changed_hex_name = HEXAGRAM_BY_TRIGRAMS[
+                    (changed_upper_gua, changed_lower_gua)
+                ]
             else:
                 changed_hex_name = "无变卦"
                 changed_hex_num = 0
 
             return json.dumps({
                 "success": True,
+                "capability_status": "partial_structural",
+                "method_profile": "liuyao_basic_coin_cast",
+                "input_mode": "simulated_random" if generated_randomly else "caller_supplied_coins",
+                "原始摇币": [
+                    {"爻位": index + 1, "coins": values}
+                    for index, values in enumerate(coin_groups)
+                ],
+                "随机审计": {
+                    "source": (
+                        "seeded_prng"
+                        if generated_randomly and random_seed is not None
+                        else "system_random"
+                        if generated_randomly
+                        else "caller_supplied"
+                    ),
+                    "seed": random_seed if generated_randomly else None,
+                },
                 "本卦": hex_name,
                 "卦序": hex_num,
                 "上卦": upper_gua,
@@ -141,6 +230,9 @@ class LiuYaoToolkit(Toolkit):
                 "变卦序": changed_hex_num,
                 "六爻": [{"爻位": i+1, **y} for i, y in enumerate(yaos)],
                 "动爻位置": [i+1 for i, y in enumerate(yaos) if y["changing"]],
+                "爻序规则": "初爻至上爻，自下而上",
+                "算法状态": "基础卦象可用；纳甲、八宫、世应、伏神等须另行完整装卦",
+                "解释边界": "起卦动作与选项答案判断相互独立；不得把模拟摇币当作现实事件证据。",
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -154,6 +246,13 @@ class LiuYaoToolkit(Toolkit):
             question_type: 问题类型 ("事业", "婚姻", "财运", "健康", "通用")
         """
         try:
+            if question_type in {"健康", "疾病", "医疗", "官司", "法律"}:
+                return json.dumps({
+                    "success": False,
+                    "capability_status": "high_risk_suppressed",
+                    "error": "高风险现实问题不提供卦象吉凶判断。",
+                    "allowed_use": "仅可查询卦名、卦象和传统术语。",
+                }, ensure_ascii=False)
             hex_info = {
                 "乾": {"象": "天行健，君子以自强不息", "吉凶": "吉", "含义": "刚健中正，万物之始"},
                 "坤": {"象": "地势坤，君子以厚德载物", "吉凶": "吉", "含义": "柔顺包容，厚德载物"},
@@ -187,27 +286,34 @@ class LiuYaoToolkit(Toolkit):
             day_ganzhi: 测卦日的干支 (如 "甲子")
         """
         try:
+            if upper_gua not in TRIGRAM_LINES or lower_gua not in TRIGRAM_LINES:
+                raise ValueError("上卦和下卦必须是有效八卦名")
+            if len(day_ganzhi) != 2 or day_ganzhi[0] not in TIANGAN or day_ganzhi[1] not in DIZHI:
+                raise ValueError("测卦日干支格式错误，应如甲子")
+
+            _, hexagram_name = HEXAGRAM_BY_TRIGRAMS[(upper_gua, lower_gua)]
+            palace_gua = next(
+                palace for palace, members in LIUYAO_PALACES.items()
+                if hexagram_name in members
+            )
+            palace_wuxing = BAGUA[palace_gua]["五行"]
+            liushen_start = LIUSHEN_START_BY_DAY_GAN[day_ganzhi[0]]
+
             lines = []
             for i in range(6):
-                if i < 3:
-                    gua = lower_gua
-                    pos = i
-                else:
-                    gua = upper_gua
-                    pos = i - 3
-
-                gan_list = LIUYAO_NAJIA_GAN.get(gua, ["?"] * 6)
-                zhi_list = LIUYAO_NAJIA_ZHI.get(gua, ["?"] * 6)
+                gua = lower_gua if i < 3 else upper_gua
+                pos = i
+                gan_list = LIUYAO_NAJIA_GAN[gua]
+                zhi_list = LIUYAO_NAJIA_ZHI[gua]
                 gan = gan_list[pos]
                 zhi = zhi_list[pos]
-                wx = WUXING_ZHI.get(zhi, "?")
+                wx = WUXING_ZHI[zhi]
 
-                liuqin = self._get_liuqin(day_ganzhi[0], zhi)
-                liushen_idx = DIZHI_IDX.get(day_ganzhi[1], 0) % 6
-                liushen = LIUYAO_LIUSHEN[(liushen_idx + i) % 6]
+                liuqin = self._get_liuqin(palace_wuxing, wx)
+                liushen = LIUYAO_LIUSHEN[(liushen_start + i) % 6]
 
                 lines.append({
-                    "爻位": 6 - i,
+                    "爻位": i + 1,
                     "纳甲": f"{gan}{zhi}",
                     "地支": zhi,
                     "五行": wx,
@@ -215,7 +321,17 @@ class LiuYaoToolkit(Toolkit):
                     "六神": liushen,
                 })
 
-            return json.dumps({"success": True, "纳甲六爻": lines}, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "partial_structural",
+                "method_profile": "liuyao_basic_najia",
+                "本卦": hexagram_name,
+                "八宫归属": palace_gua,
+                "宫五行": palace_wuxing,
+                "纳甲六爻": lines,
+                "算法状态": "纳甲、八宫、六亲、六神基础装配可用；世应、伏神、旬空和旺衰尚未实现",
+                "未实现字段": ["世应", "伏神", "旬空", "旺衰"],
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -228,6 +344,13 @@ class LiuYaoToolkit(Toolkit):
                           "事业", "婚姻女", "婚姻男", "考试", "疾病", "失物", "官司")
         """
         try:
+            if question_type in {"疾病", "官司", "子嗣"}:
+                return json.dumps({
+                    "success": False,
+                    "capability_status": "high_risk_suppressed",
+                    "error": "医疗、法律和生育主题不提供自动取用神判断。",
+                    "allowed_use": "可作为传统术语资料阅读，不用于现实决策。",
+                }, ensure_ascii=False)
             yongshen_map = {
                 "父母": "父母爻", "兄弟": "兄弟爻", "子孙": "子孙爻",
                 "妻财": "妻财爻", "官鬼": "官鬼爻",
@@ -244,6 +367,7 @@ class LiuYaoToolkit(Toolkit):
 
             return json.dumps({
                 "success": True,
+                "capability_status": "cultural_reference_only",
                 "问题类型": question_type,
                 "用神": ys,
                 "原神": yuan_shen.get(ys, "未知"),
@@ -294,6 +418,11 @@ class LiuYaoToolkit(Toolkit):
             dong_yao_count: 动爻数量 (0-6)
         """
         try:
+            if not isinstance(dong_yao_count, int) or not 0 <= dong_yao_count <= 6:
+                return json.dumps({
+                    "success": False,
+                    "error": "dong_yao_count 必须是 0—6 的整数。",
+                }, ensure_ascii=False)
             status_interpret = {
                 "旺相": "用神有力，事可成",
                 "休囚": "用神无力，需等待时机",
@@ -314,6 +443,7 @@ class LiuYaoToolkit(Toolkit):
 
             return json.dumps({
                 "success": True,
+                "capability_status": "cultural_reference_only",
                 "用神状态": yong_shen_status,
                 "用神解读": status_interpret.get(yong_shen_status, "待分析"),
                 "动爻数": dong_yao_count,
@@ -323,29 +453,31 @@ class LiuYaoToolkit(Toolkit):
             return json.dumps({"success": False, "error": str(e)})
 
     def _match_trigram(self, lines: List[int]) -> str:
-        trigram_map = {
-            (1, 1, 1): "乾", (0, 0, 0): "坤", (1, 0, 0): "震",
-            (0, 1, 1): "巽", (0, 1, 0): "坎", (1, 0, 1): "离",
-            (1, 1, 0): "兑", (0, 0, 1): "艮",
-        }
-        return trigram_map.get(tuple(lines), "乾")
+        trigram_map = {tuple(pattern): name for name, pattern in TRIGRAM_LINES.items()}
+        if tuple(lines) not in trigram_map:
+            raise ValueError(f"无效三爻结构：{lines}")
+        return trigram_map[tuple(lines)]
 
     def _trigrams_to_hexagram(self, upper: str, lower: str) -> int:
-        upper_map = {"坤": 0, "震": 1, "坎": 2, "兑": 3, "艮": 4, "离": 5, "巽": 6, "乾": 7}
-        lower_map = {"坤": 0, "震": 8, "坎": 16, "兑": 24, "艮": 32, "离": 40, "巽": 48, "乾": 56}
-        idx = upper_map.get(upper, 0) + lower_map.get(lower, 0)
-        return idx + 1
+        try:
+            return HEXAGRAM_BY_TRIGRAMS[(upper, lower)][0]
+        except KeyError as exc:
+            raise ValueError(f"无效上下卦组合：{upper}上{lower}下") from exc
 
-    def _get_liuqin(self, day_gan: str, zhi: str) -> str:
-        day_wx = WUXING_GAN[day_gan]
-        zhi_wx = WUXING_ZHI[zhi]
-        wx_order = ["木", "火", "土", "金", "水"]
-        lq_order = LIUYAO_LIUQIN_ORDER
+    def _get_liuqin(self, palace_wuxing: str, yao_wuxing: str) -> str:
+        from .calendar_engine import WUXING_SHENG, WUXING_KE
 
-        day_idx = wx_order.index(day_wx)
-        zhi_idx = wx_order.index(zhi_wx)
-        diff = (zhi_idx - day_idx) % 5
-        return lq_order[diff]
+        if yao_wuxing == palace_wuxing:
+            return "兄弟"
+        if WUXING_SHENG.get(palace_wuxing) == yao_wuxing:
+            return "子孙"
+        if WUXING_KE.get(palace_wuxing) == yao_wuxing:
+            return "妻财"
+        if WUXING_KE.get(yao_wuxing) == palace_wuxing:
+            return "官鬼"
+        if WUXING_SHENG.get(yao_wuxing) == palace_wuxing:
+            return "父母"
+        return "未知"
 
 
 class MeiHuaToolkit(Toolkit):
@@ -395,6 +527,8 @@ class MeiHuaToolkit(Toolkit):
 
             return json.dumps({
                 "success": True,
+                "capability_status": "cultural_reference_only",
+                "method_profile": "meihua_number_cast",
                 "上卦": upper_gua,
                 "上卦五行": upper_wx,
                 "上卦象": BAGUA[upper_gua]["象"],
@@ -404,6 +538,7 @@ class MeiHuaToolkit(Toolkit):
                 "动爻": dong_yao,
                 "上卦数": upper_idx,
                 "下卦数": lower_idx,
+                "解释边界": "梅花起卦的取数和外应存在流派差异，仅作传统文化参考。",
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -418,6 +553,16 @@ class MeiHuaToolkit(Toolkit):
             dong_yao: 动爻位置 (1-6, 1-3为下卦，4-6为上卦)
         """
         try:
+            if upper_gua not in BAGUA or lower_gua not in BAGUA:
+                return json.dumps({
+                    "success": False,
+                    "error": "上卦和下卦必须是有效八卦名。",
+                }, ensure_ascii=False)
+            if not isinstance(dong_yao, int) or not 1 <= dong_yao <= 6:
+                return json.dumps({
+                    "success": False,
+                    "error": "动爻位置必须是 1—6 的整数。",
+                }, ensure_ascii=False)
             if dong_yao <= 3:
                 ti_gua = upper_gua
                 yong_gua = lower_gua
@@ -450,6 +595,8 @@ class MeiHuaToolkit(Toolkit):
 
             return json.dumps({
                 "success": True,
+                "capability_status": "cultural_reference_only",
+                "method_profile": "meihua_tiyong_baseline",
                 "体卦": ti_gua,
                 "体卦五行": ti_wx,
                 "用卦": yong_gua,
@@ -457,6 +604,7 @@ class MeiHuaToolkit(Toolkit):
                 "体用关系": relation,
                 "判断": judge,
                 "动爻": dong_yao,
+                "解释边界": "体用关系属于传统解释，不构成现实事件的确定判断。",
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
@@ -513,50 +661,12 @@ class QiMenToolkit(Toolkit):
             day: 日期
             hour: 时辰 (0-23)
         """
-        try:
-            from .calendar_engine import _hour_to_zhi, ganzhi_from_offset
-            hour_zhi = _hour_to_zhi(hour)
-
-            day_gz = day_ganzhi_from_date(date(year, month, day))
-            day_gan_idx = TIANGAN_IDX[day_gz[0]]
-            day_zhi_idx = DIZHI_IDX[day_gz[1]]
-
-            fu_tou = day_gan_idx % 9
-            current_jieqi = self._get_jieqi(month, day)
-
-            yang_dun = month in (12, 1, 2, 3, 4, 5, 6)
-            ju = (fu_tou + day_zhi_idx) % 9 + 1
-
-            jiuxing_positions = list(range(9))
-            bamen_offset = (day_zhi_idx) % 8
-            bashen_offset = hour_zhi % 8
-
-            gong_data = {}
-            for i in range(9):
-                gong_num = i + 1
-                xing = QIMEN_JIUXING[(i + fu_tou) % 9]
-                men = QIMEN_BAMEN[(i + bamen_offset) % 8]
-                shen = QIMEN_BASHEN[(i + bashen_offset) % 8] if i < 8 else "天禽"
-
-                gong_data[gong_num] = {
-                    "九星": xing,
-                    "八门": men,
-                    "八神": shen,
-                    "宫位": gong_num,
-                }
-
-            return json.dumps({
-                "success": True,
-                "时间": f"{year}-{month}-{day} {hour}时",
-                "日干支": day_gz,
-                "节气": current_jieqi,
-                "局数": ju,
-                "阴阳遁": "阳遁" if yang_dun else "阴遁",
-                "值符": TIANGAN[fu_tou],
-                "九宫布局": gong_data,
-            }, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"success": False, "error": str(e)})
+        return json.dumps({
+            "success": False,
+            "capability_status": "experimental_disabled",
+            "error": "奇门排盘尚未实现完整的节气定局、三元局数、值符值使与天地人神盘转布规则，已停止输出伪精确盘。",
+            "allowed_use": "仅可查询传统术语资料，不可用于正式判断。",
+        }, ensure_ascii=False)
 
     def analyze_qimen_geju(self, geju_name: str) -> str:
         """
@@ -592,37 +702,13 @@ class QiMenToolkit(Toolkit):
         Args:
             question_type: 问题类型 ("事业", "婚姻", "求财", "出行", "官司", "考试", "失物", "疾病")
         """
-        try:
-            keji_map = {
-                "事业": {"用神": "开门", "辅助": "生门、官星", "说明": "开门主事业，看落宫吉凶"},
-                "婚姻": {"用神": "六合", "辅助": "乙奇、庚奇", "说明": "六合主婚姻，乙为女庚为男"},
-                "求财": {"用神": "生门", "辅助": "戊、甲子戊", "说明": "生门主财运，戊主资本"},
-                "出行": {"用神": "驿马星", "辅助": "日干落宫", "说明": "看出行方向吉凶"},
-                "官司": {"用神": "惊门", "辅助": "值符、值使", "说明": "惊门主口舌是非"},
-                "考试": {"用神": "景门", "辅助": "天辅星", "说明": "景门主文章，天辅主考运"},
-                "失物": {"用神": "玄武", "辅助": "时干落宫", "说明": "玄武主盗贼失物"},
-                "疾病": {"用神": "天芮星", "辅助": "死门", "说明": "天芮主病，死门主凶"},
-            }
-            info = keji_map.get(question_type, {"用神": "日干", "辅助": "时干", "说明": "通用参考"})
-            return json.dumps({"success": True, "问题类型": question_type, **info}, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"success": False, "error": str(e)})
-
-    def _get_jieqi(self, month: int, day: int) -> str:
-        jieqi_table = [
-            (1, 6, "小寒"), (1, 20, "大寒"), (2, 4, "立春"), (2, 19, "雨水"),
-            (3, 6, "惊蛰"), (3, 21, "春分"), (4, 5, "清明"), (4, 20, "谷雨"),
-            (5, 6, "立夏"), (5, 21, "小满"), (6, 6, "芒种"), (6, 21, "夏至"),
-            (7, 7, "小暑"), (7, 23, "大暑"), (8, 7, "立秋"), (8, 23, "处暑"),
-            (9, 8, "白露"), (9, 23, "秋分"), (10, 8, "寒露"), (10, 23, "霜降"),
-            (11, 7, "立冬"), (11, 22, "小雪"), (12, 7, "大雪"), (12, 22, "冬至"),
-        ]
-        current = "冬至"
-        for m, d, name in jieqi_table:
-            if (month, day) >= (m, d):
-                current = name
-        return current
-
+        return json.dumps({
+            "success": False,
+            "capability_status": "experimental_disabled",
+            "问题类型": question_type,
+            "error": "奇门完整排盘未实现，不能脱离盘面提供用神判断。",
+            "allowed_use": "仅可查询传统术语资料。",
+        }, ensure_ascii=False)
 
 class LiuRenToolkit(Toolkit):
     def __init__(self, **kwargs):
@@ -643,41 +729,12 @@ class LiuRenToolkit(Toolkit):
             day: 日期
             hour: 时辰 (0-23)
         """
-        try:
-            from .calendar_engine import _hour_to_zhi, ganzhi_from_offset
-
-            day_gz = day_ganzhi_from_date(date(year, month, day))
-            day_gan = day_gz[0]
-            day_zhi = day_gz[1]
-            hour_zhi_idx = _hour_to_zhi(hour)
-            hour_zhi = DIZHI[hour_zhi_idx]
-
-            month_jiang_map = {
-                0: "丑", 1: "子", 2: "亥", 3: "戌", 4: "酉", 5: "申",
-                6: "未", 7: "午", 8: "巳", 9: "辰", 10: "卯", 11: "寅",
-            }
-            month_num = (month - 1) % 12
-            yue_jiang = month_jiang_map[month_num]
-
-            ti_pan = list(DIZHI)
-            di_pan = list(DIZHI)
-            tian_pan = [DIZHI[(DIZHI_IDX[z] + DIZHI_IDX[yue_jiang]) % 12] for z in ti_pan]
-
-            sike = self._build_sike(day_gan, day_zhi, tian_pan, ti_pan)
-            sanchuan = self._build_sanchuan(sike)
-
-            return json.dumps({
-                "success": True,
-                "日干支": day_gz,
-                "时辰": hour_zhi,
-                "月将": yue_jiang,
-                "天盘": tian_pan,
-                "地盘": ti_pan,
-                "四课": sike,
-                "三传": sanchuan,
-            }, ensure_ascii=False)
-        except Exception as e:
-            return json.dumps({"success": False, "error": str(e)})
+        return json.dumps({
+            "success": False,
+            "capability_status": "experimental_disabled",
+            "error": "大六壬排盘尚未实现月将加时、贵人、四课取法与九宗门完整发传规则，已停止输出伪精确三传。",
+            "allowed_use": "仅可查询传统术语资料，不可用于正式判断。",
+        }, ensure_ascii=False)
 
     def analyze_sike(self, sike_json: str) -> str:
         """
@@ -721,52 +778,3 @@ class LiuRenToolkit(Toolkit):
             }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
-
-    def _build_sike(self, day_gan: str, day_zhi: str, tian_pan: list, ti_pan: list) -> list:
-        from .calendar_engine import WUXING_GAN, WUXING_ZHI, WUXING_KE
-        gan_zhi_map = {"甲": "寅", "乙": "卯", "丙": "巳", "丁": "午", "戊": "巳",
-                       "己": "午", "庚": "申", "辛": "酉", "壬": "亥", "癸": "子"}
-        day_gan_zhi = gan_zhi_map.get(day_gan, "寅")
-
-        sike = []
-        pairs = [
-            ("日干阳神", day_gan_zhi, day_gan),
-            ("日干阴神", "", day_gan),
-            ("日支阳神", day_zhi, day_zhi),
-            ("日支阴神", "", day_zhi),
-        ]
-
-        for name, base, ref in pairs:
-            if not base:
-                base = day_zhi
-            idx = DIZHI_IDX.get(base, 0)
-            upper = tian_pan[idx]
-            lower = base
-            upper_wx = WUXING_ZHI.get(upper, "土")
-            lower_wx = WUXING_ZHI.get(lower, "土")
-
-            if upper_wx == lower_wx:
-                rel = "bihe"
-            elif WUXING_KE.get(upper_wx) == lower_wx:
-                rel = "ke_down"
-            elif WUXING_KE.get(lower_wx) == upper_wx:
-                rel = "ke_up"
-            else:
-                rel = "sheng"
-
-            sike.append({"name": name, "upper": upper, "lower": lower, "relation": rel})
-
-        return sike
-
-    def _build_sanchuan(self, sike: list) -> dict:
-        chuan_list = []
-        for ke in sike:
-            if ke["relation"] in ("ke_down", "ke_up"):
-                chuan_list.append(ke["upper"])
-
-        first = chuan_list[0] if len(chuan_list) > 0 else sike[0]["upper"]
-        first_idx = DIZHI_IDX.get(first, 0)
-        second = DIZHI[(first_idx + 4) % 12]
-        third = DIZHI[(first_idx + 8) % 12]
-
-        return {"first": first, "second": second, "third": third}

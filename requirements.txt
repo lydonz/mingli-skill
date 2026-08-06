@@ -1,4 +1,4 @@
-lunar-python>=1.4.8,<2
-pyarrow>=14,<25
+lunar-python==1.4.8
+pyarrow==21.0.0
 geonamescache==2.0.0
 pypinyin==0.55.0

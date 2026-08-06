@@ -394,120 +394,28 @@ class ZiweiToolkit(Toolkit):
                     ensure_ascii=False,
                 )
 
-            hour_zhi_idx = self._hour_to_zhi(hour)
-            lunar = solar_to_lunar(solar_year, solar_month, solar_day, hour)
-            lunar_month, lunar_day = lunar["month"], lunar["day"]
-            year_gz = lunar["year_ganzhi"]
-            year_gan = year_gz[0]
-
-            ming_gong_idx = _find_ming_gong_zhi(lunar_month, hour_zhi_idx)
-            shen_gong_idx = _find_shen_gong_zhi(lunar_month, hour_zhi_idx)
-
-            ming_gong_zhi = DIZHI[ming_gong_idx]
-            wuxing_ju = _find_wuxing_ju(ming_gong_zhi, year_gan)
-            ju_num = _ju_number(wuxing_ju)
-
-            ziwei_pos = _place_ziwei(ju_num, lunar_day)
-            tianfu_pos = (4 - ziwei_pos) % 12
-
-            stars_in_palaces = {i: [] for i in range(12)}
-
-            for star, offset in zip(ZIWEI_SERIES, ZIWEI_OFFSETS):
-                pos = (ziwei_pos + offset) % 12
-                stars_in_palaces[pos].append(star)
-
-            for star, offset in zip(TIANFU_SERIES, TIANFU_OFFSETS):
-                pos = (tianfu_pos + offset) % 12
-                stars_in_palaces[pos].append(star)
-
-            changsheng_pos = self._changsheng_start(year_gan, gender)
-            changsheng_in_palace = {}
-            for i in range(12):
-                from .calendar_engine import CHANGSHENG_12
-                idx = (changsheng_pos + i) % 12
-                changsheng_in_palace[i] = CHANGSHENG_12[idx]
-
-            palaces = {}
-            for i, palace_name in enumerate(PALACE_ORDER):
-                palace_zhi_idx = (ming_gong_idx + i) % 12
-                palace_zhi = DIZHI[palace_zhi_idx]
-                palaces[palace_name] = {
-                    "宫位地支": palace_zhi,
-                    "主星": stars_in_palaces[palace_zhi_idx],
-                    "十二长生": changsheng_in_palace.get(palace_zhi_idx, ""),
-                }
-
-            body_palace_name = PALACE_ORDER[(shen_gong_idx - ming_gong_idx) % 12]
-            if body_palace_name not in palaces:
-                body_palace_name = "命宫"
-
-            result = {
-                "success": True,
-                "出生信息": (
-                    f"{solar_year}年{solar_month}月{solar_day}日{hour}时"
+            return json.dumps({
+                "success": False,
+                "capability_status": "dependency_unavailable",
+                "排盘引擎": "iztro",
+                "precision": "unavailable",
+                "后端状态": backend_status,
+                "chart_id": computed_chart.get("chart_id"),
+                "birth_time": computed_chart.get("birth_time"),
+                "error": backend_status.get(
+                    "message", "iztro 精确紫微后端不可用。"
                 ),
-                "农历日期": (
-                    f"{year_gz}年农历{lunar_month}月{lunar_day}日"
-                ),
-                "农历数值": {
-                    "year": lunar["year"],
-                    "month": lunar_month,
-                    "day": lunar_day,
-                    "is_leap_month": is_leap_month,
-                },
-                "性别": gender,
-                "历法输入": "农历转公历后排盘" if is_lunar else "公历转农历",
-                "排盘引擎": "approximate-fallback",
-                "后端状态": {
-                    **backend_status,
-                    "fallback": "approximate-fallback",
-                    "message": (
-                        f"{backend_status['message']} 已返回近似紫微盘，"
-                        "不可作为完整紫微规则或回归结果使用。"
-                    ),
-                },
-                "闰月处理": (
-                    "闰月按同名月处理，属于流派选择，建议人工复核。"
-                    if is_leap_month else "非闰月"
-                ),
-                "算法范围": (
-                    "降级近似盘：仅14主星和基础十二宫；未包含四化、辅星、"
-                    "煞星、流年飞化和完整紫微校验规则。"
-                ),
-                "年干支": year_gz,
-                "生肖": animal_year(lunar["year"]),
-                "命宫": {
-                    "地支": ming_gong_zhi,
-                    "位置索引": ming_gong_idx,
-                },
-                "身宫": body_palace_name,
-                "五行局": wuxing_ju,
-                "十二宫": palaces,
-                "生年四化": [],
-                "子时约定": {
-                    "convention": zi_hour_convention,
-                    "iztro_hour_index": None,
-                },
-                "紫微审计": {
-                    "schema_version": "ziwei-audit-v1",
-                    "calendar_input": "农历" if is_lunar else "公历转农历",
-                    "solar_date": f"{solar_year}-{solar_month}-{solar_day}",
-                    "lunar_date": (
-                        f"{lunar['year']}年{lunar_month}月{lunar_day}日"
-                    ),
-                    "hour": hour,
-                    "zi_hour_convention": zi_hour_convention,
-                    "iztro_hour_index": None,
-                    "palace_count": len(palaces),
-                    "warning": "近似回退盘不含完整四化与辅星数据。",
-                    "backend_status": backend_status,
-                },
-            }
-            result["chart_id"] = computed_chart.get("chart_id")
-            result["birth_time"] = computed_chart.get("birth_time")
-            return json.dumps(result, ensure_ascii=False)
+                "fallback_used": False,
+            }, ensure_ascii=False)
         except Exception as e:
-            return json.dumps({"success": False, "error": str(e)})
+            return json.dumps({
+                "success": False,
+                "capability_status": "ziwei_error",
+                "排盘引擎": "iztro",
+                "precision": "unavailable",
+                "error": str(e),
+                "fallback_used": False,
+            }, ensure_ascii=False)
 
     def analyze_palace(self, palace_name: str, stars_json: str) -> str:
         """

@@ -85,8 +85,19 @@ class PhysiognomyToolkit(Toolkit):
                 info = FACE_TWELVE_PALACES.get(palace_name)
                 if not info:
                     return json.dumps({"success": False, "error": f"未找到 '{palace_name}'"}, ensure_ascii=False)
-                return json.dumps({"success": True, "宫位": palace_name, **info}, ensure_ascii=False)
-            return json.dumps({"success": True, "面相十二宫": FACE_TWELVE_PALACES}, ensure_ascii=False)
+                return json.dumps({
+                    "success": True,
+                    "capability_status": "cultural_reference_only",
+                    "宫位": palace_name,
+                    **info,
+                    "使用边界": "仅展示传统术语，不据外貌判断个人属性或现实结果。",
+                }, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "面相十二宫": FACE_TWELVE_PALACES,
+                "使用边界": "仅展示传统术语，不据外貌判断个人属性或现实结果。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -102,8 +113,19 @@ class PhysiognomyToolkit(Toolkit):
                 info = FIVE_ORGANS_WUXING.get(organ)
                 if not info:
                     return json.dumps({"success": False, "error": f"未找到 '{organ}'"}, ensure_ascii=False)
-                return json.dumps({"success": True, "器官": organ, **info}, ensure_ascii=False)
-            return json.dumps({"success": True, "五官五行": FIVE_ORGANS_WUXING}, ensure_ascii=False)
+                return json.dumps({
+                    "success": True,
+                    "capability_status": "cultural_reference_only",
+                    "器官": organ,
+                    "传统对应": info,
+                    "使用边界": "五官与脏腑的对应仅属传统材料，不构成健康评估。",
+                }, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "五官五行": FIVE_ORGANS_WUXING,
+                "使用边界": "五官与脏腑的对应仅属传统材料，不构成健康评估。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -111,13 +133,23 @@ class PhysiognomyToolkit(Toolkit):
         """
         面相三停：查询面相上中下三停的分法和代表的年龄段运势。无需参数。
         """
-        return json.dumps({"success": True, "面相三停": FACE_THREE_STOPS}, ensure_ascii=False)
+        return json.dumps({
+            "success": True,
+            "capability_status": "cultural_reference_only",
+            "面相三停": FACE_THREE_STOPS,
+            "使用边界": "年龄段含义为传统文献术语，不是人生预测。",
+        }, ensure_ascii=False)
 
     def face_five_mountains(self) -> str:
         """
         面相五岳：查询面部五岳的位置和所代表的运势。无需参数。
         """
-        return json.dumps({"success": True, "面相五岳": FACE_FIVE_MOUNTAINS}, ensure_ascii=False)
+        return json.dumps({
+            "success": True,
+            "capability_status": "cultural_reference_only",
+            "面相五岳": FACE_FIVE_MOUNTAINS,
+            "使用边界": "仅作传统文化资料展示。",
+        }, ensure_ascii=False)
 
     def analyze_face_shape(self, shape: str) -> str:
         """
@@ -143,7 +175,13 @@ class PhysiognomyToolkit(Toolkit):
             info = shape_info.get(shape)
             if not info:
                 return json.dumps({"success": False, "error": f"未收录 '{shape}' 面型"}, ensure_ascii=False)
-            return json.dumps({"success": True, "面型": shape, **info}, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "面型": shape,
+                "传统象征": info,
+                "使用边界": "仅作传统文化资料展示，不据外貌推断健康、智力、财富、品行、婚姻、命运或职业资格。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -159,8 +197,19 @@ class PhysiognomyToolkit(Toolkit):
                 info = PALM_THREE_LINES.get(line_name)
                 if not info:
                     return json.dumps({"success": False, "error": f"未找到 '{line_name}'"}, ensure_ascii=False)
-                return json.dumps({"success": True, "掌纹": line_name, **info}, ensure_ascii=False)
-            return json.dumps({"success": True, "三大主线": PALM_THREE_LINES}, ensure_ascii=False)
+                return json.dumps({
+                    "success": True,
+                    "capability_status": "cultural_reference_only",
+                    "掌纹": line_name,
+                    "传统对应": info,
+                    "使用边界": "掌纹名称不构成健康、智力、关系或寿命判断。",
+                }, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "三大主线": PALM_THREE_LINES,
+                "使用边界": "掌纹名称不构成健康、智力、关系或寿命判断。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -176,8 +225,19 @@ class PhysiognomyToolkit(Toolkit):
                 info = PALM_AUX_LINES.get(line_name)
                 if not info:
                     return json.dumps({"success": False, "error": f"未找到 '{line_name}'"}, ensure_ascii=False)
-                return json.dumps({"success": True, "掌纹": line_name, **info}, ensure_ascii=False)
-            return json.dumps({"success": True, "辅助线": PALM_AUX_LINES}, ensure_ascii=False)
+                return json.dumps({
+                    "success": True,
+                    "capability_status": "cultural_reference_only",
+                    "掌纹": line_name,
+                    "传统对应": info,
+                    "使用边界": "辅助线名称仅为传统资料，不构成健康、婚姻、事业或财富判断。",
+                }, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "辅助线": PALM_AUX_LINES,
+                "使用边界": "辅助线名称仅为传统资料，不构成健康、婚姻、事业或财富判断。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -199,7 +259,13 @@ class PhysiognomyToolkit(Toolkit):
             info = finger_info.get(finger_type)
             if not info:
                 return json.dumps({"success": False, "error": f"未收录 '{finger_type}'"}, ensure_ascii=False)
-            return json.dumps({"success": True, "指型": finger_type, **info}, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "指型": finger_type,
+                "传统象征": info,
+                "使用边界": "仅作传统文化资料展示，不据外貌推断健康、智力、财富、品行、婚姻、命运或职业资格。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -218,13 +284,19 @@ class PhysiognomyToolkit(Toolkit):
                 "鼻": ["鼻如截筒衣食丰，鼻如悬胆财帛充", "鼻梁低陷财帛少，鼻头丰圆家业兴"],
                 "口": ["口方唇红食禄丰，口小唇薄多辛苦", "唇如涂朱主富贵，唇黑唇青多疾病"],
                 "耳": ["耳大贴肉富贵足，耳高于眉聪明显", "耳薄无轮廓反贫，耳白于面名扬天下"],
-                "颧": ["颧高权大贵人相，颧低无权多操劳", "女子颧高杀夫星，男子颧高权柄重"],
+                "颧": ["传统相书常以颧骨附会权势与劳逸", "此类判断受时代与性别偏见影响，不得据外貌推断品行、婚姻或命运"],
                 "下巴": ["地阁方圆晚运好，尖削短薄老来穷", "下巴丰满主有福，双下巴主安享晚年"],
                 "痣": ["面无善痣方为贵，痣在隐处反为吉", "额头主贵下巴主富，鼻头主财眼尾主桃花"],
             }
             sayings = jinju.get(part)
             if not sayings:
                 return json.dumps({"success": False, "error": f"未收录 '{part}'"}, ensure_ascii=False)
-            return json.dumps({"success": True, "部位": part, "相法口诀": sayings}, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "capability_status": "cultural_reference_only",
+                "部位": part,
+                "相法口诀": sayings,
+                "使用边界": "仅作传统文化资料展示；不得据外貌推断健康、智力、财富、品行、婚姻或命运。",
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})

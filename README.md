@@ -58,7 +58,7 @@
 
 ## 安装
 
-依赖 Python 3.10+、Node.js 和 npm。
+依赖 Python 3.11+、Node.js 20+ 和 npm。
 
 ```bash
 python3 -m pip install -r requirements.txt
@@ -240,7 +240,7 @@ report = json.loads(toolkit.generate_html_report(
 
 `knowledge_references` 是传统命理的方法论与文化语境参考，不是未来事件、财富、健康或职业结果的预测证据。
 
-`rules_suggestion` 只处理低风险多选题兼容场景。未提供选项会返回 `rules_suggestion_no_options`；健康、伤害、法律，以及死亡、医疗、投资、借贷、赌博、破产、怀孕或离婚等内容会返回可见的抑制状态，不能据此生成选项预测。
+历史选择题预测已经停用。未提供选项返回 `rules_suggestion_no_options`；低风险选项返回 `rules_suggestion_retired`；高风险内容返回可见抑制状态。系统不会自动选择答案。
 
 ## 外部排盘回归
 
@@ -337,7 +337,7 @@ python3 -m unittest discover -v
 - 误差区间内全部候选四柱，以及独立八字、紫微和综合入口的共享 `chart_id`。
 - 城市名歧义、地点解析失败和组件失败的可见状态。
 - 规则建议在空选项与高风险主题下的抑制状态。
-- `iztro` 缺失时紫微近似回退的可见降级状态。
+- `iztro` 缺失时紫微结构化失败且不生成近似盘。
 - 同一 `chart_id` 在八字、财富、事业和流年输出中的一致性。
 - 立春前后的日期区间流年切分。
 - 十二个节气边界的流月切分与流月干支。
@@ -352,14 +352,14 @@ python3 -m unittest discover -v
 ## 参考项目与数据来源
 
 - 参考项目：[dfytensor/MingLiSkill](https://github.com/dfytensor/MingLiSkill)。
-- [DestinyLinker/MingLi-Bench](https://github.com/DestinyLinker/MingLi-Bench/tree/b7433280fd86d7a7c27debbc47d0303c218f0bfd)：紫微排盘回归参考和选择题基准，MIT License。
+- [DestinyLinker/MingLi-Bench](https://github.com/DestinyLinker/MingLi-Bench/tree/b7433280fd86d7a7c27debbc47d0303c218f0bfd)：仅用于固定版本的紫微与四柱结构回归，MIT License。
 - [pengyunzhaoisme1207-bit/bazi-ziwei-mingli-cn](https://github.com/pengyunzhaoisme1207-bit/bazi-ziwei-mingli-cn)：内置知识包固定于提交 `f086546f9d4ab0e6fd00f8c37364269241249115`，用于方法论、术语和书目引用，MIT License。
 - `czuo03/bazi-calculate-rlvr`：四柱计算回归候选数据，CC-BY-4.0。
 - `czuo03/bazi-reasoning-300` 与 `AmareshHebbar/bazi-sft`：隔离的推理/实现对照数据，不作为排盘真值或现实事件预测依据。
 
 具体版本、许可证、允许用途和禁止用途见 [datasets/manifest.json](./datasets/manifest.json)。
 
-MingLi-Bench 的选择题结果只能说明该题集上的选项匹配情况，不能据此宣称事业、财运、婚姻或其他未来事件可以被准确预测。
+MingLi-Bench 的历史事件题干、选项和答案不进入项目数据，也不计算事件答案命中率。
 
 ## 免责声明
 

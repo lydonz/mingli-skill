@@ -33,7 +33,7 @@ class HybridMingliToolkit(Toolkit):
         gender: str,
         category: str,
         question: str,
-        options_json: str,
+        options_json: str = "[]",
         minute: int = 0,
         year_boundary: str = "lichun",
         second: int = 0,
@@ -89,6 +89,14 @@ class HybridMingliToolkit(Toolkit):
                         ),
                     },
                 }, ensure_ascii=False)
+        letters = [option["letter"] for option in options]
+        if len(letters) != len(set(letters)):
+            return json.dumps({
+                "error": {
+                    "code": "options_json_duplicate_letter",
+                    "message": "选项 letter 必须唯一。",
+                },
+            }, ensure_ascii=False)
 
         birth_info = {
             "year": year, "month": month, "day": day,
@@ -232,7 +240,7 @@ class HybridMingliToolkit(Toolkit):
             "birth_time": chart_data.get("birth_time"),
             "strength_assessment": chart_data.get("strength_assessment"),
             "legacy_strength": chart_data.get("legacy_strength"),
-            "note": "请根据以上排盘数据，结合命理知识推理出答案。rules_suggestion 仅供参考，不保证正确。",
+            "note": "历法事实、传统结构和现实建议应分层表达；项目不再自动猜测选择题答案。",
         }
         if knowledge_result is not None:
             result["knowledge_references"] = knowledge_result["references"]
@@ -360,6 +368,9 @@ class HybridMingliToolkit(Toolkit):
                 "子时约定": zw.get("子时约定", {}),
             }
             result["ziwei_raw"] = zw
+        elif tool_data.get("ziwei_status"):
+            result["ziwei"] = tool_data["ziwei_status"]
+            result["ziwei_raw"] = tool_data["ziwei_status"]
 
         if tool_data.get("bz_career"):
             result["career_analysis"] = tool_data["bz_career"]
@@ -409,8 +420,8 @@ class HybridMingliToolkit(Toolkit):
         return result
 
     def _get_rules_suggestion(self, q: dict, chart: dict | None = None) -> dict:
-        """规则引擎建议（仅供参考）。"""
-        from engine.run_tools_engine import predict, compute_chart
+        """Return a visible disabled state for the retired answer predictor."""
+        from engine.run_tools_engine import compute_chart
         from tools.safety_policy import assess_rules_suggestion_request
 
         bi = q["birth_info"]
@@ -439,22 +450,18 @@ class HybridMingliToolkit(Toolkit):
                 "message": policy["message"],
             }
         else:
-            try:
-                pred = predict(q, self._chart_cache)
-                status = {"status": "ok", "backend": "rules_engine"}
-            except Exception as exc:
-                pred = None
-                status = {
-                    "status": "error",
-                    "code": "rules_suggestion_failed",
-                    "backend": "rules_engine",
-                    "message": str(exc),
-                }
+            pred = None
+            status = {
+                "status": "disabled",
+                "code": "rules_suggestion_retired",
+                "backend": "rules_engine",
+                "message": "历史事件选择题预测已停用；仅返回可审计排盘与结构化文化资料。",
+            }
 
         if status["status"] != "ok":
             confidence = status["message"]
         else:
-            confidence = "仅供参考，不保证正确"
+            confidence = "不适用"
         return {
             "suggested_answer": pred,
             "confidence": confidence,
