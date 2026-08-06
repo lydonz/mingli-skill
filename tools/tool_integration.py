@@ -178,7 +178,7 @@ ZIWEI_STAR_MARRIAGE_TYPE = {
 
 def build_tool_data(year, month, day, hour, gender="男", chart=None):
     """Build derived data from one already-computed chart when available."""
-    data = {"component_status": {}}
+    data = {"component_status": {}, "_warnings": []}
     if chart is None:
         from engine.run_tools_engine import compute_chart
 
@@ -201,6 +201,7 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
         }
 
     data["chart_id"] = chart.get("chart_id")
+    effective_gender = chart.get("gender", gender)
     effective_year = chart.get("birth_year", year)
     effective_month = chart.get("birth_month", month)
     effective_day = chart.get("birth_day", day)
@@ -215,7 +216,7 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
             effective_month,
             effective_day,
             effective_hour,
-            gender,
+            effective_gender,
             zi_hour_convention,
             chart,
         )
@@ -239,6 +240,16 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
             "input_precision": "hour",
             "zi_hour_convention": zi_hour_convention,
         }
+        bazi_year = (chart.get("四柱") or {}).get("年柱")
+        ziwei_year = ziwei.get("年干支")
+        ziwei["年干支口径"] = "iztro农历年"
+        ziwei["八字年界规则"] = chart.get("year_boundary", "lichun")
+        if bazi_year and ziwei_year and bazi_year != ziwei_year:
+            data["_warnings"].append(
+                "八字年柱与紫微年干支采用不同年界口径："
+                f"八字={bazi_year}（{chart.get('year_boundary', 'lichun')}），"
+                f"紫微={ziwei_year}（iztro农历年）。"
+            )
     else:
         backend_status = ziwei.get("后端状态", {})
         data["ziwei_status"] = ziwei
@@ -258,7 +269,7 @@ def build_tool_data(year, month, day, hour, gender="男", chart=None):
 
     analyzers = {
         "bz_career": lambda: analyze_career_chart(chart),
-        "bz_marriage": lambda: analyze_marriage_chart(chart, gender),
+        "bz_marriage": lambda: analyze_marriage_chart(chart, effective_gender),
         "bz_health": lambda: analyze_health_chart(chart),
         "bz_wealth": lambda: analyze_wealth_chart(chart),
         "bz_education": lambda: analyze_yin_shou_chart(chart),

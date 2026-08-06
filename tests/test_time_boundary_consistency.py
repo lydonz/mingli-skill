@@ -33,6 +33,54 @@ class TimeBoundaryConsistencyTests(unittest.TestCase):
         self.assertEqual(chart["四柱"]["年柱"], "甲辰")
         self.assertEqual(chart["四柱"]["月柱"], "丙寅")
 
+    def test_standard_timezone_does_not_require_a_place_record(self):
+        chart = compute_chart({
+            "year": 2024,
+            "month": 2,
+            "day": 4,
+            "hour": 9,
+            "gender": "男",
+            "birth_context": {
+                "time_basis": "standard",
+                "timezone": "Europe/London",
+            },
+        })
+
+        self.assertEqual(chart["birth_time"]["time_basis"], "standard")
+        self.assertEqual(chart["birth_time"]["timezone"], "Europe/London")
+        self.assertIsNone(chart["birth_time"]["place"])
+
+    def test_future_period_boundaries_use_birth_timezone(self):
+        result = json.loads(HybridMingliToolkit().analyze_question(
+            1990,
+            6,
+            15,
+            12,
+            "女",
+            "事业",
+            "2026年事业",
+            "[]",
+            birth_context={
+                "time_basis": "standard",
+                "place": {
+                    "name": "New York",
+                    "country_code": "US",
+                },
+            },
+            analysis_period={
+                "start": "2026-02-03",
+                "end": "2026-02-05",
+                "granularity": "day",
+            },
+        ))
+
+        self.assertEqual(result["liunian"]["period_timezone"], "America/New_York")
+        self.assertTrue(
+            result["liunian"]["civil_to_bazi_year_segments"][0]["end"].startswith(
+                "2026-02-03T15:02:"
+            )
+        )
+
     def test_lunar_new_year_boundary_is_used_by_chart_dayun_and_flow_periods(self):
         birth = {
             "year": 1988,
@@ -90,6 +138,38 @@ class TimeBoundaryConsistencyTests(unittest.TestCase):
         )
         self.assertTrue(all(item["chart_id"] for item in candidates))
         self.assertTrue(all("changed_fields" in item for item in candidates))
+
+    def test_uncertainty_includes_ziwei_changes_when_bazi_is_stable(self):
+        chart = compute_chart({
+            "year": 2000,
+            "month": 1,
+            "day": 1,
+            "hour": 23,
+            "minute": 50,
+            "gender": "男",
+            "birth_context": {
+                "time_basis": "standard",
+                "timezone": "Asia/Shanghai",
+                "uncertainty_minutes": 20,
+            },
+        })
+
+        stability = chart["birth_time"]["chart_stability"]
+        self.assertFalse(stability["stable"])
+        self.assertTrue(
+            any("紫微" in item["changed_fields"] for item in stability["candidate_charts"])
+        )
+
+    def test_invalid_gender_is_visible_error(self):
+        with self.assertRaises(BirthContextError) as error:
+            compute_chart({
+                "year": 1990,
+                "month": 6,
+                "day": 15,
+                "hour": 12,
+                "gender": "未知",
+            })
+        self.assertEqual(error.exception.code, "invalid_gender")
 
     def test_public_bazi_and_ziwei_entrypoints_share_the_computed_chart(self):
         context = {"place": {"name": "Guangzhou", "country_code": "CN"}}

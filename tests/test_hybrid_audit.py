@@ -29,6 +29,20 @@ class HybridAuditTests(unittest.TestCase):
         )
         self.assertEqual(result["birth_time"]["time_basis"], "standard")
 
+    def test_unrequested_optional_components_are_skipped_not_degraded(self):
+        result = self._analyze()
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["component_status"]["liunian"]["status"], "skipped")
+        self.assertEqual(
+            result["component_status"]["rules_suggestion"]["status"],
+            "skipped",
+        )
+        self.assertEqual(
+            result["component_status"]["interpretation"]["status"],
+            "skipped",
+        )
+
     def test_derived_analyses_share_chart_id_and_canonical_strength(self):
         result = self._analyze(
             birth_context={"place": {"name": "Guangzhou", "country_code": "CN"}}
@@ -40,11 +54,9 @@ class HybridAuditTests(unittest.TestCase):
             result["strength_assessment"]["旺衰"],
             result["huoyuan_analysis"]["旺衰"],
         )
-        self.assertIn(
-            "strength_model_conflict",
-            result["strength_assessment"]["conflicts"],
-        )
-        self.assertIn("抑制", result["wealth_analysis"]["财运提示"])
+        self.assertEqual(result["strength_assessment"]["conflicts"], [])
+        self.assertEqual(result["career_analysis"]["解释状态"], "ok")
+        self.assertNotIn("模型存在冲突", result["wealth_analysis"]["财运提示"])
 
     def test_explicit_period_splits_at_lichun(self):
         result = self._analyze(

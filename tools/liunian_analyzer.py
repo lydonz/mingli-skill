@@ -10,6 +10,7 @@ import os
 import sys
 import re
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -23,8 +24,51 @@ from tools.calendar_engine import (
     lunar_new_year_datetime, solar_term_datetime,
 )
 from tools.chart_assessment import get_resolved_preference
+from tools.birth_context import CALENDAR_BACKEND_TIMEZONE
 
 FLOW_MONTH_TERM_INDICES = (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
+
+
+def _period_timezone(chart: dict) -> str:
+    return (
+        (chart.get("birth_time") or {}).get("timezone")
+        or CALENDAR_BACKEND_TIMEZONE
+    )
+
+
+def _boundary_in_period_timezone(
+    boundary: datetime,
+    timezone_name: str,
+) -> datetime:
+    return boundary.replace(
+        tzinfo=ZoneInfo(CALENDAR_BACKEND_TIMEZONE)
+    ).astimezone(ZoneInfo(timezone_name)).replace(tzinfo=None)
+
+
+def _period_time_in_backend_timezone(
+    value: datetime,
+    timezone_name: str,
+) -> datetime:
+    return value.replace(
+        tzinfo=ZoneInfo(timezone_name)
+    ).astimezone(ZoneInfo(CALENDAR_BACKEND_TIMEZONE)).replace(tzinfo=None)
+
+
+def _period_year_ganzhi(
+    value: datetime,
+    year_boundary: str,
+    timezone_name: str,
+) -> str:
+    backend_value = _period_time_in_backend_timezone(value, timezone_name)
+    return year_ganzhi(
+        backend_value.year,
+        backend_value.month,
+        backend_value.day,
+        backend_value.hour,
+        backend_value.minute,
+        backend_value.second,
+        year_boundary=year_boundary,
+    )
 
 
 def extract_years(text: str) -> list[int]:
@@ -180,7 +224,7 @@ def format_years_compare(chart: dict, years: list[int]) -> str:
         du_info = ""
         if a.get("当前大运"):
             du = a["当前大运"]
-            du_info = f" 大运:{du['大运干支']}({du['天干十神']})"
+            du_info = f" 大运:{du['大运干支']}({du['大运天干十神']})"
 
         lines.append(
             f"  {y}: {a['流年干支']} "
@@ -236,6 +280,7 @@ def _year_boundary_segments(
     start: date,
     end: date,
     year_boundary: str,
+    timezone_name: str = CALENDAR_BACKEND_TIMEZONE,
 ) -> list[dict]:
     """Split an interval at the configured Bazi-year boundary."""
     segments = []
@@ -243,12 +288,24 @@ def _year_boundary_segments(
     final = datetime.combine(end + timedelta(days=1), datetime.min.time())
     if year_boundary == "lichun":
         boundaries = [
-            (solar_term_datetime(year, 2), "立春")
+            (
+                _boundary_in_period_timezone(
+                    solar_term_datetime(year, 2),
+                    timezone_name,
+                ),
+                "立春",
+            )
             for year in range(start.year - 1, end.year + 2)
         ]
     elif year_boundary == "lunar_new_year":
         boundaries = [
-            (lunar_new_year_datetime(year), "农历新年")
+            (
+                _boundary_in_period_timezone(
+                    lunar_new_year_datetime(year),
+                    timezone_name,
+                ),
+                "农历新年",
+            )
             for year in range(start.year - 1, end.year + 2)
         ]
     else:
@@ -258,14 +315,10 @@ def _year_boundary_segments(
             segments.append({
                 "start": cursor.isoformat(timespec="seconds"),
                 "end": boundary.isoformat(timespec="seconds"),
-                "流年干支": year_ganzhi(
-                    cursor.year,
-                    cursor.month,
-                    cursor.day,
-                    cursor.hour,
-                    cursor.minute,
-                    cursor.second,
-                    year_boundary=year_boundary,
+                "流年干支": _period_year_ganzhi(
+                    cursor,
+                    year_boundary,
+                    timezone_name,
                 ),
                 "boundary": boundary_name,
             })
@@ -273,28 +326,36 @@ def _year_boundary_segments(
     segments.append({
         "start": cursor.isoformat(timespec="seconds"),
         "end": final.isoformat(timespec="seconds"),
-        "流年干支": year_ganzhi(
-            cursor.year,
-            cursor.month,
-            cursor.day,
-            cursor.hour,
-            cursor.minute,
-            cursor.second,
-            year_boundary=year_boundary,
+        "流年干支": _period_year_ganzhi(
+            cursor,
+            year_boundary,
+            timezone_name,
         ),
     })
     return segments
 
 
-def _flow_month_segments(chart: dict, start: date, end: date) -> list[dict]:
+def _flow_month_segments(
+    chart: dict,
+    start: date,
+    end: date,
+    timezone_name: str | None = None,
+) -> list[dict]:
     """Split a civil interval at the twelve Bazi-month ``jie`` boundaries."""
+    timezone_name = timezone_name or _period_timezone(chart)
     cursor = datetime.combine(start, datetime.min.time())
     final = datetime.combine(end + timedelta(days=1), datetime.min.time())
     boundaries = sorted(
-        solar_term_datetime(year, term_index)
+        _boundary_in_period_timezone(
+            solar_term_datetime(year, term_index),
+            timezone_name,
+        )
         for year in range(start.year - 1, end.year + 2)
         for term_index in FLOW_MONTH_TERM_INDICES
-        if cursor < solar_term_datetime(year, term_index) < final
+        if cursor < _boundary_in_period_timezone(
+            solar_term_datetime(year, term_index),
+            timezone_name,
+        ) < final
     )
     segments = []
     for boundary in boundaries + [final]:
@@ -310,6 +371,10 @@ def _flow_month_segments(chart: dict, start: date, end: date) -> list[dict]:
             minute=segment_start.minute,
             second=segment_start.second,
             year_boundary=chart.get("year_boundary", "lichun"),
+            term_datetime=_period_time_in_backend_timezone(
+                segment_start,
+                timezone_name,
+            ),
         )
         flow_year = flow_chart["四柱"]["年柱"]
         flow_month = flow_chart["四柱"]["月柱"]
@@ -394,13 +459,20 @@ def integrate_year_analysis(
         start, end, granularity = _parse_period(analysis_period)
         anchors = _period_anchors(start, end, granularity)
         source = "explicit_period"
+        period_timezone = _period_timezone(chart)
         segments = _year_boundary_segments(
             start,
             end,
             chart.get("year_boundary", "lichun"),
+            timezone_name=period_timezone,
         )
         month_segments = (
-            _flow_month_segments(chart, start, end)
+            _flow_month_segments(
+                chart,
+                start,
+                end,
+                timezone_name=period_timezone,
+            )
             if granularity in ("month", "day") else []
         )
     else:
@@ -426,7 +498,7 @@ def integrate_year_analysis(
                 "检测到的年份": [],
                 "年份流年对比": [],
                 "component_status": {
-                    "status": "degraded",
+                    "status": "skipped",
                     "code": "no_target_period",
                     "message": "未提供 analysis_period，问题文本中也未检测到年份。",
                 },
@@ -434,6 +506,7 @@ def integrate_year_analysis(
         anchors = [date(year, 7, 1) for year in years]
         start, end, granularity = anchors[0], anchors[-1], "year"
         source = "question_year_fallback"
+        period_timezone = _period_timezone(chart)
         warnings.append(
             "仅从文本提取年份并以7月1日作为年度锚点；具体事件请提供 analysis_period。"
         )
@@ -456,6 +529,7 @@ def integrate_year_analysis(
             "granularity": granularity,
         },
         "year_boundary": chart.get("year_boundary", "lichun"),
+        "period_timezone": period_timezone,
         "civil_to_bazi_year_segments": segments,
         "流月分段": month_segments,
         "检测到的年份": sorted({anchor.year for anchor in anchors}),

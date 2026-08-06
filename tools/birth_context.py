@@ -19,6 +19,18 @@ TIME_NORMALIZATION_VERSION = "true-solar-v3"
 GEONAMES_SOURCE = "geonamescache-2.0.0"
 ZI_HOUR_CONVENTIONS = ("benchmark", "early", "late")
 CALENDAR_BACKEND_TIMEZONE = "Asia/Shanghai"
+GENDER_ALIASES = {
+    "男": "男",
+    "M": "男",
+    "m": "男",
+    "male": "男",
+    "男子": "男",
+    "女": "女",
+    "F": "女",
+    "f": "女",
+    "female": "女",
+    "女子": "女",
+}
 
 
 class BirthContextError(ValueError):
@@ -34,6 +46,17 @@ class BirthContextError(ValueError):
         if self.candidates:
             value["candidates"] = self.candidates
         return value
+
+
+def normalize_gender(value: Any) -> str:
+    """Normalize supported gender labels and reject ambiguous values."""
+    normalized = GENDER_ALIASES.get(value)
+    if normalized is None:
+        raise BirthContextError(
+            "invalid_gender",
+            "gender 必须是男、女、M、F、male 或 female。",
+        )
+    return normalized
 
 
 @dataclass(frozen=True)
@@ -374,11 +397,13 @@ def normalize_birth_context(
             "invalid_time_basis", "time_basis 必须是 true_solar 或 standard。"
         )
 
-    place_data = context.get("place") or {
-        key: context[key]
-        for key in ("name", "latitude", "longitude", "timezone", "country_code")
-        if key in context
-    }
+    place_data = context.get("place")
+    if place_data is None:
+        place_data = {
+            key: context[key]
+            for key in ("name", "latitude", "longitude", "country_code")
+            if key in context
+        }
     place = resolve_place(place_data) if place_data else None
     if time_basis == "true_solar" and place is None:
         raise BirthContextError(

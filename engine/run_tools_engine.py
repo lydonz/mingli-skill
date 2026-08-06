@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from tools.calendar_engine import (
     DIZHI,
@@ -33,7 +33,7 @@ from tools.calendar_engine import (
 shen = shi_shen
 
 from tools.tool_integration import build_tool_data
-from tools.birth_context import normalize_birth_context
+from tools.birth_context import normalize_birth_context, normalize_gender
 from tools.chart_assessment import (
     attach_strength_assessment,
     classify_preference_signals,
@@ -63,6 +63,14 @@ def _chart_id_for(
     ).hexdigest()[:16]
 
 
+def _ziwei_hour_index(hour: int, convention: str) -> int:
+    if hour == 23:
+        return 0 if convention == "early" else 12
+    if hour == 0 and convention == "late":
+        return 12
+    return (hour + 1) // 2
+
+
 def _uncertainty_candidate_times(
     effective_time: datetime,
     calendar_time: datetime,
@@ -85,7 +93,7 @@ def _uncertainty_candidate_times(
     day_cursor = start.replace(hour=0, minute=0, second=0, microsecond=0)
     final_day = end.replace(hour=0, minute=0, second=0, microsecond=0)
     while day_cursor <= final_day:
-        for hour in (1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23):
+        for hour in (0, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23):
             add_candidate(
                 day_cursor.replace(hour=hour),
                 "hour_or_day_boundary",
@@ -117,9 +125,14 @@ def _candidate_charts(
     time_basis: str,
     zi_hour_convention: str,
     nominal_pillars: dict,
+    nominal_effective_time: datetime,
 ) -> list[dict]:
-    """Return all distinct four-pillar candidates within the uncertainty range."""
-    candidates_by_pillars: dict[tuple[tuple[str, str], ...], dict] = {}
+    """Return distinct Bazi and Ziwei candidates within the uncertainty range."""
+    nominal_ziwei_key = (
+        nominal_effective_time.date().isoformat(),
+        _ziwei_hour_index(nominal_effective_time.hour, zi_hour_convention),
+    )
+    candidates_by_chart: dict[tuple[Any, Any], dict] = {}
     for candidate_time, reasons in _uncertainty_candidate_times(
         effective_time,
         calendar_time,
@@ -141,12 +154,18 @@ def _candidate_charts(
             term_datetime=candidate_calendar_time,
         )["四柱"]
         pillar_key = tuple(sorted(pillars.items()))
+        ziwei_key = (
+            candidate_time.date().isoformat(),
+            _ziwei_hour_index(candidate_time.hour, zi_hour_convention),
+        )
         changed_fields = [
             name for name, value in pillars.items()
             if nominal_pillars.get(name) != value
         ]
-        entry = candidates_by_pillars.setdefault(
-            pillar_key,
+        if ziwei_key != nominal_ziwei_key:
+            changed_fields.append("紫微")
+        entry = candidates_by_chart.setdefault(
+            (pillar_key, ziwei_key),
             {
                 "effective_time": candidate_time.isoformat(timespec="seconds"),
                 "calendar_time": candidate_calendar_time.isoformat(
@@ -161,16 +180,20 @@ def _candidate_charts(
                     zi_hour_convention,
                 ),
                 "四柱": pillars,
+                "紫微候选": {
+                    "solar_date": ziwei_key[0],
+                    "iztro_hour_index": ziwei_key[1],
+                },
                 "changed_fields": changed_fields,
                 "boundaries": [],
             },
         )
         entry["boundaries"].extend(reasons)
 
-    for entry in candidates_by_pillars.values():
+    for entry in candidates_by_chart.values():
         entry["boundaries"] = sorted(set(entry["boundaries"]))
     return sorted(
-        candidates_by_pillars.values(),
+        candidates_by_chart.values(),
         key=lambda item: item["effective_time"],
     )
 
@@ -186,7 +209,7 @@ def compute_chart(bi) -> ComputedChart:
         effective.day,
         effective.hour,
     )
-    g = bi.get("gender") or "男"
+    g = normalize_gender(bi.get("gender") or "男")
     minute = effective.minute
     second = effective.second
     year_boundary = bi.get("year_boundary", "lichun")
@@ -249,6 +272,7 @@ def compute_chart(bi) -> ComputedChart:
             c["birth_time"]["time_basis"],
             c["birth_time"]["zi_hour_convention"],
             c["四柱"],
+            effective,
         )
         c["birth_time"]["chart_stability"] = {
             "stable": len(variants) == 1,

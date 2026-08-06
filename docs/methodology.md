@@ -48,7 +48,7 @@
 
 `element-balance-v1` 在此结果上派生一组不重叠的喜用字段。旺方取“我克”为用、“克我”为喜、“同我”为忌；弱方取“生我”为用、“同我”为喜、“我生”为忌。这是项目明确的、便于回归和审计的基线，并不声称覆盖所有命理流派或证明未来事件。
 
-旧排盘字段和旧的 20% 阈值结果保存在 `legacy_strength` 与 `legacy_preference`，只用于兼容和比对。任何新分析不得从这些字段生成结论。若两套规则不一致，`conflicts` 会返回 `strength_model_conflict` 或 `preference_model_conflict`；依赖旺衰或喜用的模板必须降级或显式列出冲突。
+旧排盘字段和旧的 20% 阈值结果保存在 `legacy_strength` 与 `legacy_preference`，仅用于迁移观察。任何新分析不得从这些字段生成结论；它们与 v2 规则不同不构成运行时冲突，也不会让普通命盘降级。`conflicts` 只记录真实的输入、计算或后端冲突。
 
 流年和大运的 `preference_signals`/`喜忌信号` 逐项记录“直接命中”或“生扶”关系，以及天干、地支或大运来源。不得把 `supports_yong` 渲染成确定的“喜用神年”，也不得把 `supports_ji` 渲染成确定的不利事件。
 

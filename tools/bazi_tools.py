@@ -69,9 +69,18 @@ def _with_evidence(chart: dict, payload: dict, signals: dict) -> dict:
         },
         "strength_conflicts": assessment.get("conflicts", []),
     }
+    conflicts = assessment.get("conflicts", [])
     payload["component_status"] = {
-        "status": "ok",
+        "status": "degraded" if conflicts else "ok",
         "backend": "calendar_engine",
+        **(
+            {
+                "code": "strength_assessment_conflict",
+                "message": "旺衰或喜用输入存在未解决冲突。",
+            }
+            if conflicts
+            else {}
+        ),
     }
     return payload
 
@@ -337,7 +346,7 @@ class BaziToolkit(Toolkit):
                 birth_context,
                 year_boundary,
             )
-            result["性别"] = gender
+            result["性别"] = result.get("gender", gender)
             result["出生公历"] = (
                 f"{year}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}"
             )
@@ -380,7 +389,18 @@ class BaziToolkit(Toolkit):
         """
         try:
             result = build_liunian(start_year, count)
-            return json.dumps({"success": True, "流年": result}, ensure_ascii=False)
+            return json.dumps({
+                "success": True,
+                "流年": result,
+                "component_status": {
+                    "status": "degraded",
+                    "code": "generic_calendar_only",
+                    "message": (
+                        "该低层工具只生成通用年份干支，未关联个人 ComputedChart；"
+                        "个人流年请使用 HybridMingliToolkit 或显式命盘入口。"
+                    ),
+                },
+            }, ensure_ascii=False)
         except Exception as e:
             return json.dumps({"success": False, "error": str(e)})
 
@@ -422,6 +442,7 @@ class BaziToolkit(Toolkit):
         second: int = 0,
         year_boundary: str = "lichun",
         birth_context: Optional[dict] = None,
+        gender: str = "男",
     ) -> str:
         """Return the exact Bazi flow month for a concrete civil date/time."""
         try:
@@ -432,6 +453,7 @@ class BaziToolkit(Toolkit):
                 hour,
                 minute=minute,
                 second=second,
+                gender=gender,
                 birth_context=birth_context,
                 year_boundary=year_boundary,
             )

@@ -62,41 +62,43 @@ class HybridMingliToolkit(Toolkit):
         :param interpretation_document: 可选的、与 chart_id 绑定的解读文本契约
         :return: JSON 字符串，包含排盘数据、证据、状态与规则引擎建议
         """
+        options_warning = None
         try:
-            options = json.loads(options_json)
-        except json.JSONDecodeError:
-            return json.dumps({"error": "options_json 格式错误"}, ensure_ascii=False)
-        if not isinstance(options, list):
-            return json.dumps({
-                "error": {
-                    "code": "options_json_not_list",
-                    "message": "options_json 必须是选项对象列表。",
-                },
-            }, ensure_ascii=False)
-        for index, option in enumerate(options):
-            if (
-                not isinstance(option, dict)
-                or not isinstance(option.get("letter"), str)
-                or not option["letter"]
-                or not isinstance(option.get("text", ""), str)
-            ):
-                return json.dumps({
-                    "error": {
-                        "code": "options_json_item_invalid",
-                        "message": (
-                            f"第 {index + 1} 个选项必须包含非空字符串 letter "
-                            "和字符串 text。"
-                        ),
-                    },
-                }, ensure_ascii=False)
-        letters = [option["letter"] for option in options]
-        if len(letters) != len(set(letters)):
-            return json.dumps({
-                "error": {
-                    "code": "options_json_duplicate_letter",
-                    "message": "选项 letter 必须唯一。",
-                },
-            }, ensure_ascii=False)
+            parsed_options = json.loads(options_json or "[]")
+        except (TypeError, json.JSONDecodeError):
+            parsed_options = []
+            options_warning = "options_json 无法解析；选择题预测已退役，已忽略该字段。"
+        if not isinstance(parsed_options, list):
+            options = []
+            options_warning = "options_json 不是选项列表；选择题预测已退役，已忽略该字段。"
+        else:
+            options = []
+            for index, option in enumerate(parsed_options):
+                if (
+                    not isinstance(option, dict)
+                    or not isinstance(option.get("letter"), str)
+                    or not option["letter"]
+                    or not isinstance(option.get("text", ""), str)
+                ):
+                    options_warning = (
+                        f"options_json 第 {index + 1} 项格式无效；"
+                        "选择题预测已退役，已忽略该字段。"
+                    )
+                    options = []
+                    break
+                options.append({
+                    "letter": option["letter"],
+                    "text": option.get("text", ""),
+                })
+            letters = [option["letter"] for option in options]
+            if len(letters) != len(set(letters)):
+                options_warning = (
+                    "options_json 存在重复选项编号；"
+                    "选择题预测已退役，系统不会自动选择答案。"
+                )
+        normalized_options_json = json.dumps(
+            options, ensure_ascii=False, separators=(",", ":")
+        )
 
         birth_info = {
             "year": year, "month": month, "day": day,
@@ -121,6 +123,7 @@ class HybridMingliToolkit(Toolkit):
             chart_data = self._build_chart_data(q)
         except BirthContextError as exc:
             return json.dumps({
+                "success": False,
                 "error": exc.as_dict(),
                 "component_status": {
                     "birth_context": {"status": "error", **exc.as_dict()},
@@ -128,6 +131,7 @@ class HybridMingliToolkit(Toolkit):
             }, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({
+                "success": False,
                 "error": {
                     "code": "chart_construction_failed",
                     "message": str(exc),
@@ -141,19 +145,25 @@ class HybridMingliToolkit(Toolkit):
                 },
             }, ensure_ascii=False)
         warnings = chart_data.pop("_warnings", [])
+        if options_warning:
+            warnings.append(options_warning)
         rules_suggestion = self._get_rules_suggestion(
             q, chart_data.get("_chart")
         )
         chart_data.pop("_chart", None)
 
         liunian_data = None
-        liunian_status = {"status": "degraded", "code": "no_target_period"}
+        liunian_status = {
+            "status": "skipped",
+            "code": "no_target_period",
+            "message": "未提供流年目标区间，已跳过流年分析。",
+        }
         try:
             raw_ln = integrate_year_analysis(
                 birth_info=birth_info,
                 chart=chart_data.get("bazi_raw"),
                 question=question,
-                options_json=options_json,
+                options_json=normalized_options_json,
                 analysis_period=analysis_period,
             )
             ln_parsed = json.loads(raw_ln)
@@ -180,7 +190,7 @@ class HybridMingliToolkit(Toolkit):
 
         knowledge_result = None
         knowledge_status = {
-            "status": "ok",
+            "status": "skipped",
             "code": "not_requested",
             "backend": "local_knowledge",
             "network": "disabled",
@@ -220,6 +230,8 @@ class HybridMingliToolkit(Toolkit):
                 warnings.append("本地知识库检索失败，未返回知识引用。")
 
         result = {
+            "success": True,
+            "status": "ok",
             "category": category,
             "bazi": chart_data.get("bazi", {}),
             "ziwei": chart_data.get("ziwei", {}),
@@ -263,7 +275,7 @@ class HybridMingliToolkit(Toolkit):
             interpretation_brief = build_interpretation_brief(result)
             result["interpretation_brief"] = interpretation_brief
             interpretation_status = {
-                "status": "ok",
+                "status": "skipped",
                 "code": "not_provided",
                 "backend": "interpretation_contract",
             }
@@ -309,6 +321,7 @@ class HybridMingliToolkit(Toolkit):
         result = {"_warnings": [], "component_status": {}}
         tool_data = build_tool_data(y, m, d, h, g, chart=chart)
         result["component_status"].update(tool_data.get("component_status", {}))
+        result["_warnings"].extend(tool_data.get("_warnings", []))
         result["_chart"] = chart
 
         if chart:
@@ -436,10 +449,10 @@ class HybridMingliToolkit(Toolkit):
         if not options:
             pred = None
             status = {
-                "status": "degraded",
+                "status": "skipped",
                 "code": "rules_suggestion_no_options",
                 "backend": "rules_engine",
-                "message": "自由问答未提供选项，未运行选择题规则引擎。",
+                "message": "自由问答未提供选项，已跳过已退役的选择题规则引擎。",
             }
         elif policy["suppressed"]:
             pred = None

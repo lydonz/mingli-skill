@@ -20,8 +20,17 @@ tar \
   --exclude='datasets/cache' \
   --exclude='__pycache__' \
   --exclude='.pytest_cache' \
+  --exclude='.ruff_cache' \
+  --exclude='build' \
+  --exclude='dist' \
+  --exclude='*.egg-info' \
   -C "$SOURCE_DIR" \
   -cf - . | tar -C "$DESTINATION" -xf -
 
 test -f "$DESTINATION/SKILL.md"
+if ! command -v npm >/dev/null 2>&1; then
+  printf 'Installation incomplete: npm is required to install iztro.\n' >&2
+  exit 1
+fi
+(cd "$DESTINATION" && npm ci --omit=dev)
 printf 'Installed %s to %s\n' "$SKILL_NAME" "$DESTINATION"

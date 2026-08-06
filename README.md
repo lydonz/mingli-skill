@@ -67,7 +67,7 @@
 - 身旺或中和偏旺：用神取“我克”，喜神取“克我”，忌神取“同我”。
 - 身弱或中和偏弱：用神取“生我”，喜神取“同我”，忌神取“我生”。
 
-`strength_assessment` 是事业、财富和流年模块唯一读取的旺衰、喜用来源。旧排盘器的 `日主强弱`、`喜用神` 和 `legacy_strength` 仅为接口兼容保留；当旧值与当前规则不一致时，输出 `strength_model_conflict` 或 `preference_model_conflict`，依赖旺衰的确定性模板会降级为 `待定`。
+`strength_assessment` 是事业、财富和流年模块唯一读取的旺衰、喜用来源。旧排盘器的 `日主强弱`、`喜用神` 和 `legacy_strength` 仅为迁移观察保留；它们即使与 v2 规则不同，也不会制造普通命盘冲突或阻断新分析。
 
 流年和大运不会把“某五行直接命中喜用神”与“某五行生扶喜用神”混为一谈。`喜忌信号` 会逐项给出干支来源、五行和 `direct_yong`、`supports_yong`、`direct_ji` 或 `supports_ji` 等规则代码；它们是传统结构信号，不等于现实中的吉凶或事件预测。
 
@@ -81,6 +81,10 @@
 python3 -m pip install .
 npm ci
 ```
+
+上面的命令适用于在源码目录运行。若要安装为完整 Skill，请使用
+`setup.sh` 或 `setup.bat`；安装脚本会把项目复制到目标目录并在目标目录安装
+固定版本的 `iztro`，确保紫微后端可用。
 
 参与开发或运行回归脚本时，也可以直接安装锁定依赖：
 
@@ -276,12 +280,12 @@ report = json.loads(toolkit.generate_html_report(
 | `bazi` | 四柱、日主、十神、五行、喜忌、大运等基础数据。 |
 | `ziwei` | 命宫、官禄、财帛、夫妻等宫位主星摘要。 |
 | `ziwei_raw` | 完整十二宫、星曜亮度、四化、大限、子时约定与紫微审计元数据。 |
-| `strength_assessment` | 当前衍生分析使用的旺衰评估、证据和冲突标记。 |
+| `strength_assessment` | 当前衍生分析使用的旺衰评估、证据和规则版本。 |
 | `career_analysis` | 官杀、印绶、食伤、财星等事业相关结构化信号与证据。 |
-| `wealth_analysis` | 财星强度、位置和规则证据；存在模型冲突时抑制确定性模板。 |
+| `wealth_analysis` | 财星强度、位置和规则证据；仍需结合现实现金流与风险判断。 |
 | `liunian` | 显式日期区间或文本年份回退模式下的流年对比。 |
 | `liunian.流月分段` | 在月/日粒度区间内，按十二个节气切分的流月、十神和大运。 |
-| `component_status` | 每个组件的 `ok`、`degraded` 或 `error` 状态。 |
+| `component_status` | 每个组件的 `ok`、`skipped`、`degraded`、`disabled` 或 `error` 状态。 |
 | `data_quality_warnings` | 缺失地点、后端降级等质量提示。 |
 | `knowledge_references` | 显式请求本地知识库时返回的行级参考；包含知识包、固定版本、来源、文件、章节、行号和摘录。 |
 | `knowledge_context` | 显式请求本地知识库时返回的查询文本、包校验状态和使用边界。 |
@@ -292,7 +296,7 @@ report = json.loads(toolkit.generate_html_report(
 
 `knowledge_references` 是传统命理的方法论与文化语境参考，不是未来事件、财富、健康或职业结果的预测证据。
 
-历史选择题预测已经停用。未提供选项返回 `rules_suggestion_no_options`；低风险选项返回 `rules_suggestion_retired`；高风险内容返回可见抑制状态。系统不会自动选择答案。
+历史选择题预测已经停用。未提供选项返回 `rules_suggestion_no_options`；低风险选项返回 `rules_suggestion_retired`；高风险内容返回可见抑制状态。系统不会自动选择答案，选项格式问题也不会阻断排盘。
 
 ## 外部排盘回归
 

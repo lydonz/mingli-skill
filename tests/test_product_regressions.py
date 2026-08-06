@@ -3,9 +3,11 @@ import unittest
 
 from engine.run_tools_engine import compute_chart
 from tools import HybridMingliToolkit
+from tools.bazi_tools import BaziToolkit
 from tools.divination_tools import LiuYaoToolkit, MeiHuaToolkit, QiMenToolkit
 from tools.fengshui_tools import FengShuiToolkit
 from tools.physiognomy_tools import PhysiognomyToolkit
+from tools.liunian_analyzer import format_years_compare
 
 
 class ProductRegressionTests(unittest.TestCase):
@@ -26,7 +28,7 @@ class ProductRegressionTests(unittest.TestCase):
         self.assertEqual(hybrid["bazi"]["四柱"]["时柱"], "戊子")
         self.assertEqual(hybrid["ziwei_raw"]["时干支"], "戊子")
 
-    def test_option_letters_must_be_unique(self):
+    def test_retired_options_do_not_block_chart_generation(self):
         result = json.loads(HybridMingliToolkit().analyze_question(
             1990,
             6,
@@ -38,7 +40,12 @@ class ProductRegressionTests(unittest.TestCase):
             '[{"letter":"A","text":"技术"},{"letter":"A","text":"行政"}]',
         ))
 
-        self.assertEqual(result["error"]["code"], "options_json_duplicate_letter")
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            result["rules_suggestion"]["component_status"]["code"],
+            "rules_suggestion_retired",
+        )
+        self.assertTrue(any("重复选项编号" in warning for warning in result["data_quality_warnings"]))
 
     def test_liuyao_keeps_raw_coin_groups_and_supports_seeded_replay(self):
         toolkit = LiuYaoToolkit()
@@ -71,6 +78,27 @@ class ProductRegressionTests(unittest.TestCase):
         self.assertEqual(face["capability_status"], "cultural_reference_only")
         self.assertIn("使用边界", face)
         self.assertEqual(star["capability_status"], "cultural_reference_only")
+
+    def test_generic_low_level_flow_year_is_explicitly_degraded(self):
+        result = json.loads(BaziToolkit().analyze_liunian(2026, 1))
+
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            result["component_status"]["code"],
+            "generic_calendar_only",
+        )
+
+    def test_year_comparison_formatter_uses_the_public_dayun_field(self):
+        chart = compute_chart({
+            "year": 1990,
+            "month": 6,
+            "day": 15,
+            "hour": 12,
+            "gender": "女",
+        })
+
+        formatted = format_years_compare(chart, [2026])
+        self.assertIn("2026:", formatted)
 
 
 if __name__ == "__main__":

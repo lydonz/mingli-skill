@@ -27,5 +27,25 @@ jobs:
         run: npm ci
       - name: Validate installer
         run: bash -n setup.sh
+      - name: Build Python wheel
+        run: python -m pip wheel . --no-deps --wheel-dir /tmp/mingli-wheel
+      - name: Validate isolated Skill installation
+        run: |
+          install_dir="$(mktemp -d)"
+          bash ./setup.sh "$install_dir"
+          cd /tmp
+          PYTHONPATH="$install_dir/mingli-skill" python - <<'PY'
+          import json
+          from tools import KnowledgeToolkit, ZiweiToolkit
+
+          ziwei = json.loads(ZiweiToolkit().paipan(1990, 6, 15, 12, "女"))
+          assert ziwei["success"] is True
+          assert ziwei["后端状态"]["backend"] == "iztro"
+          knowledge = json.loads(KnowledgeToolkit().search("八字方法论"))
+          assert knowledge["status"] == "ok"
+          assert knowledge["references"]
+          PY
+      - name: Compile Python sources
+        run: python -m compileall -q engine tools scripts tests
       - name: Run tests
         run: python -m unittest discover -v

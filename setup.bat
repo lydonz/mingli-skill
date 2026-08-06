@@ -13,7 +13,7 @@ if exist "%DESTINATION%" (
 )
 
 mkdir "%DESTINATION%" || exit /b 1
-robocopy "%~dp0" "%DESTINATION%" /E /XD ".git" "node_modules" "cache" "__pycache__" ".pytest_cache" >nul
+robocopy "%~dp0" "%DESTINATION%" /E /XD ".git" "node_modules" "cache" "__pycache__" ".pytest_cache" ".ruff_cache" "build" "dist" >nul
 if %ERRORLEVEL% GEQ 8 (
   echo Installation copy failed.
   exit /b 1
@@ -23,5 +23,19 @@ if not exist "%DESTINATION%\SKILL.md" (
   echo Installation failed: SKILL.md is missing.
   exit /b 1
 )
+
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo Installation incomplete: npm is required to install iztro.
+  exit /b 1
+)
+pushd "%DESTINATION%"
+call npm ci --omit=dev
+if errorlevel 1 (
+  popd
+  echo Installation failed: npm dependencies could not be installed.
+  exit /b 1
+)
+popd
 
 echo Installed %SKILL_NAME% to %DESTINATION%

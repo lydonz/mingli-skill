@@ -38,8 +38,7 @@ class RuleConsistencyTests(unittest.TestCase):
         self.assertEqual(preference["喜用神"], "土")
         self.assertEqual(preference["喜神"], "金")
         self.assertEqual(preference["忌神"], "水")
-        self.assertIn("strength_model_conflict", assessment["conflicts"])
-        self.assertIn("preference_model_conflict", assessment["conflicts"])
+        self.assertEqual(assessment["conflicts"], [])
         self.assertEqual(
             assessment["legacy_preference"]["喜用神"],
             chart["legacy_strength"]["喜用神"],
@@ -131,8 +130,8 @@ class RuleConsistencyTests(unittest.TestCase):
             result["bazi"]["喜用神规则版本"],
             assessment["preference_ruleset_version"],
         )
-        self.assertEqual(result["career_analysis"]["解释状态"], "degraded")
-        self.assertEqual(result["career_analysis"]["格局倾向"], "待定")
+        self.assertEqual(result["career_analysis"]["解释状态"], "ok")
+        self.assertNotEqual(result["career_analysis"]["格局倾向"], "待定")
         self.assertIn("喜忌信号", result["liunian"]["年份流年对比"][0])
 
 
